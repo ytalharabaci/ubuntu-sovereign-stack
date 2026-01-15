@@ -208,7 +208,7 @@ Therefore, this analysis concludes that the Ubuntu Sovereign Stack is the superi
 
 # Additions
 
-# 1- Denmark Launches Major Shift to Digital Sovereignty: Government Ministry Phases Out Microsoft Office 365 for LibreOffice
+## 1- Denmark Launches Major Shift to Digital Sovereignty: Government Ministry Phases Out Microsoft Office 365 for LibreOffice
  **Denmark** (particularly in the public sector and government levels) has initiated a process to phase out Microsoft products, starting from mid-2025 and continuing into 2026.
 
 In the summer of 2025, Denmark's Ministry of Digitalisation, led by Minister Caroline Stage Olsen, announced a major shift toward **digital sovereignty** by moving away from **Microsoft Office 365** and adopting the open-source **LibreOffice** suite. The transition began phased: roughly half of the ministry's staff switched to LibreOffice in the summer of 2025, with the full rollout targeted for completion by the end of autumn 2025 or into 2026.
