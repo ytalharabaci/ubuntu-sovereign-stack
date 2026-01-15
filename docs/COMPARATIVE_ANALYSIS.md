@@ -206,6 +206,28 @@ However, the stack demands a sophisticated IT maturity. The Usability and Manage
 
 Therefore, this analysis concludes that the Ubuntu Sovereign Stack is the superior architectural choice for entities where Data Sovereignty is the paramount non-negotiable requirement (Defense, Intelligence, Critical Infrastructure). For these entities, the operational cost of managing the stack is the necessary price of independence. For general commercial enterprises where convenience outweighs the risk of foreign metadata surveillance, the Microsoft Ecosystem remains the pragmatic choice. The "Sovereign Stack" is not a drop-in replacement; it is a strategic commitment to independence that requires continuous engineering investment to maintain.
 
+# Additions
+
+# 1- Denmark Launches Major Shift to Digital Sovereignty: Government Ministry Phases Out Microsoft Office 365 for LibreOffice
+ **Denmark** (particularly in the public sector and government levels) has initiated a process to phase out Microsoft products, starting from mid-2025 and continuing into 2026.
+
+In the summer of 2025, Denmark's Ministry of Digitalisation, led by Minister Caroline Stage Olsen, announced a major shift toward **digital sovereignty** by moving away from **Microsoft Office 365** and adopting the open-source **LibreOffice** suite. The transition began phased: roughly half of the ministry's staff switched to LibreOffice in the summer of 2025, with the full rollout targeted for completion by the end of autumn 2025 or into 2026.
+
+This follows earlier decisions by Denmark's largest municipalities—**Copenhagen** and **Aarhus**—which had already announced plans (around May-June 2025) to reduce or eliminate reliance on Microsoft software and cloud services. Key reasons cited include:
+
+- Sharp increases in licensing and subscription costs (e.g., Copenhagen reported a ~72% rise over five years).
+- Concerns over Microsoft's market dominance and **vendor lock-in**.
+- Geopolitical risks, particularly related to U.S. policies (including tensions during the Trump administration), data sovereignty, and the potential for foreign access to public data under laws like the U.S. CLOUD Act.
+- A broader European push for independence from non-EU tech providers.
+
+The primary confirmed change is replacing **Office 365** (Word, Excel, etc.) with **LibreOffice**. Early reports suggested a full switch from **Windows** to **Linux** as well, but several sources (including corrections from Danish media like Politiken) clarified this was a misunderstanding—the ministry is retaining Windows in many cases, focusing the exit mainly on productivity tools and cloud services.
+
+Denmark's emergency situations minister also urged companies to prepare **exit plans** for cloud dependencies. Microsoft has responded by expanding local data centers in Denmark (with services starting in 2026) to offer more sovereign cloud options.
+
+As of January 2026, the process is ongoing: some government departments and municipalities are still in the migration phase, but concrete steps were taken throughout 2025. Similar moves are visible elsewhere in Europe, such as Germany's Schleswig-Holstein state transitioning thousands of workstations to LibreOffice and Linux for cost savings and sovereignty.
+
+In short: Yes, you've heard correctly—Denmark's public administration has actively started a gradual exit from key Microsoft products (especially Office/365), driven by sovereignty, cost, and geopolitical concerns, and this has been widely reported since mid-2025.
+
 ---
 **Cited Works & References:**
 Data gathered from official documentation (Microsoft, Canonical, Samba), legal analysis (CLOUD Act, Schrems II), and cybersecurity reports (Google Project Zero, EDPS).
