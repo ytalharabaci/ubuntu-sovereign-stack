@@ -1,0 +1,319 @@
+version: "3.9"
+
+services:
+  # =========================================================
+  # 1. INGRESS: CLOUDFLARE TUNNEL
+  # =========================================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - external_net
+
+  # =========================================================
+  # 2. CORE IDENTITY: SAMBA (ACTIVE DIRECTORY)
+  # =========================================================
+  samba-ad:
+    image: nowsci/samba-domain:latest
+    container_name: samba-ad
+    restart: unless-stopped
+    environment:
+      - SAMBA_DOMAIN=${SAMBA_DOMAIN}
+      - SAMBA_PASSWORD=${SAMBA_ADMIN_PASSWORD}
+      - SAMBA_HOST_IP=${SAMBA_HOST_IP}
+    volumes:
+      - samba_config:/var/lib/samba
+      - samba_data:/data
+    networks:
+      - identity_net
+
+  # =========================================================
+  # 3. IDENTITY PROVIDER (IDP): AUTHENTIK
+  # =========================================================
+  authentik-postgresql:
+    image: postgres:16-alpine
+    container_name: authentik-postgresql
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${AUTHENTIK_DB_USER}
+      - POSTGRES_PASSWORD=${AUTHENTIK_DB_PASSWORD}
+      - POSTGRES_DB=${AUTHENTIK_DB_NAME}
+    volumes:
+      - authentik_db_data:/var/lib/postgresql/data
+    networks:
+      - authentik_db_net
+
+  authentik-redis:
+    image: redis:7-alpine
+    container_name: authentik-redis
+    restart: unless-stopped
+    command: --save 60 1 --loglevel warning
+    volumes:
+      - authentik_redis_data:/data
+    networks:
+      - authentik_cache_net
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    environment:
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-postgresql
+      - AUTHENTIK_POSTGRESQL__USER=${AUTHENTIK_DB_USER}
+      - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD}
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+    volumes:
+      - authentik_media:/media
+      - authentik_custom_templates:/templates
+    networks:
+      - authentik_db_net
+      - authentik_cache_net
+      - identity_net
+      - external_net
+    depends_on:
+      authentik-postgresql:
+        condition: service_started
+      authentik-redis:
+        condition: service_started
+      samba-ad:
+        condition: service_started
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    environment:
+      - AUTHENTIK_REDIS__HOST=authentik-redis
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-postgresql
+      - AUTHENTIK_POSTGRESQL__USER=${AUTHENTIK_DB_USER}
+      - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD}
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+    volumes:
+      - authentik_media:/media
+      - authentik_certs:/certs
+      - authentik_custom_templates:/templates
+    networks:
+      - authentik_db_net
+      - authentik_cache_net
+      - identity_net
+    depends_on:
+      authentik-server:
+        condition: service_started
+
+  # =========================================================
+  # 4. STORAGE & COLLABORATION: NEXTCLOUD AIO
+  # =========================================================
+  nextcloud-aio-mastercontainer:
+    image: nextcloud/all-in-one:latest
+    container_name: nextcloud-aio-mastercontainer
+    restart: unless-stopped
+    environment:
+      - APACHE_PORT=11000
+      - APACHE_IP_BINDING=0.0.0.0
+      - NEXTCLOUD_DATADIR=${NEXTCLOUD_DATA_DIR}
+      - NEXTCLOUD_AIO_SPAWN_EXTRA_NETWORKS=identity_net
+      - NEXTCLOUD_ADDITIONAL_APKS=smbclient
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - external_net
+      - identity_net
+    depends_on:
+      authentik-server:
+        condition: service_started
+
+  # =========================================================
+  # 5. COMMUNICATIONS: MAILCOW
+  # =========================================================
+  mailcow-mysql:
+    image: mariadb:10.5
+    container_name: mailcow-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MAILCOW_DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MAILCOW_DB_NAME}
+      - MYSQL_USER=${MAILCOW_DB_USER}
+      - MYSQL_PASSWORD=${MAILCOW_DB_PASSWORD}
+    volumes:
+      - mailcow_mysql_data:/var/lib/mysql
+    networks:
+      - mailcow_db_net
+    depends_on:
+      authentik-server:
+        condition: service_started
+
+  mailcow-redis:
+    image: redis:7-alpine
+    container_name: mailcow-redis
+    restart: unless-stopped
+    volumes:
+      - mailcow_redis_data:/data
+    networks:
+      - mailcow_db_net
+
+  mailcow-rspamd:
+    image: mailcow/rspamd:latest
+    container_name: mailcow-rspamd
+    restart: unless-stopped
+    environment:
+      - REDIS_SLAVE=mailcow-redis
+    volumes:
+      - mailcow_rspamd_data:/var/lib/rspamd
+    networks:
+      - mail_net
+      - mailcow_db_net
+    depends_on:
+      - mailcow-redis
+
+  mailcow-postfix:
+    image: mailcow/postfix:latest
+    container_name: mailcow-postfix
+    restart: unless-stopped
+    environment:
+      - RSPAMD_HOST=mailcow-rspamd
+    volumes:
+      - mailcow_postfix_data:/var/spool/postfix
+    networks:
+      - mail_net
+    depends_on:
+      - mailcow-mysql
+      - mailcow-rspamd
+
+  mailcow-dovecot:
+    image: mailcow/dovecot:latest
+    container_name: mailcow-dovecot
+    restart: unless-stopped
+    environment:
+      - MYSQL_HOST=mailcow-mysql
+    volumes:
+      - mailcow_vmail:/var/vmail
+    networks:
+      - mail_net
+      - mailcow_db_net
+    depends_on:
+      - mailcow-mysql
+
+  # =========================================================
+  # 6. SECURITY & SOC: WAZUH SIEM
+  # =========================================================
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:latest
+    container_name: wazuh-indexer
+    restart: unless-stopped
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms4g -Xmx4g"
+      - "cluster.name=wazuh-cluster"
+      - "node.name=wazuh-indexer"
+      - "discovery.type=single-node"
+      - "bootstrap.memory_lock=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    mem_limit: 4g
+    volumes:
+      - wazuh_indexer_data:/var/lib/wazuh-indexer
+    networks:
+      - wazuh_db_net
+      - soc_net
+    depends_on:
+      authentik-server:
+        condition: service_started
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:latest
+    container_name: wazuh-manager
+    restart: unless-stopped
+    environment:
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=${WAZUH_INDEXER_USER}
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
+      - WAZUH_API_USER=${WAZUH_API_USER}
+      - WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD}
+    volumes:
+      - wazuh_manager_data:/var/ossec/data
+      - wazuh_manager_logs:/var/log/wazuh
+      - wazuh_manager_api:/var/ossec/api/configuration
+    networks:
+      - wazuh_db_net
+      - soc_net
+    depends_on:
+      wazuh-indexer:
+        condition: service_started
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:latest
+    container_name: wazuh-dashboard
+    restart: unless-stopped
+    environment:
+      - INDEXER_USERNAME=${WAZUH_INDEXER_USER}
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
+      - WAZUH_API_URL=https://wazuh-manager
+      - WAZUH_API_USERNAME=${WAZUH_API_USER}
+      - WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD}
+    volumes:
+      - wazuh_dashboard_config:/usr/share/wazuh-dashboard/config
+    networks:
+      - soc_net
+      - external_net
+    depends_on:
+      wazuh-manager:
+        condition: service_started
+
+networks:
+  external_net:
+    driver: bridge
+  identity_net:
+    driver: bridge
+    internal: true
+  mail_net:
+    driver: bridge
+    enable_ipv6: false
+  soc_net:
+    driver: bridge
+    internal: true
+  authentik_db_net:
+    driver: bridge
+    internal: true
+  authentik_cache_net:
+    driver: bridge
+    internal: true
+  mailcow_db_net:
+    driver: bridge
+    internal: true
+  wazuh_db_net:
+    driver: bridge
+    internal: true
+
+volumes:
+  samba_config:
+  samba_data:
+  authentik_db_data:
+  authentik_redis_data:
+  authentik_media:
+  authentik_certs:
+  authentik_custom_templates:
+  nextcloud_aio_mastercontainer:
+  mailcow_mysql_data:
+  mailcow_redis_data:
+  mailcow_rspamd_data:
+  mailcow_postfix_data:
+  mailcow_vmail:
+  wazuh_indexer_data:
+  wazuh_manager_data:
+  wazuh_manager_logs:
+  wazuh_manager_api:
+  wazuh_dashboard_config:
