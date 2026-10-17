@@ -1,16 +1,17 @@
-version: "3.9"
+# Requires a populated .env (see .env.example). Image tags are pinned; review
+# upstream release notes before bumping them.
 
 services:
   # =========================================================
   # 1. INGRESS: CLOUDFLARE TUNNEL
   # =========================================================
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.1
     container_name: cloudflared
     restart: unless-stopped
     command: tunnel run
     environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:?set in .env}
     networks:
       - external_net
 
@@ -18,12 +19,12 @@ services:
   # 2. CORE IDENTITY: SAMBA (ACTIVE DIRECTORY)
   # =========================================================
   samba-ad:
-    image: nowsci/samba-domain:latest
+    image: nowsci/samba-domain:20261001025201
     container_name: samba-ad
     restart: unless-stopped
     environment:
       - SAMBA_DOMAIN=${SAMBA_DOMAIN}
-      - SAMBA_PASSWORD=${SAMBA_ADMIN_PASSWORD}
+      - SAMBA_PASSWORD=${SAMBA_ADMIN_PASSWORD:?set in .env}
       - SAMBA_HOST_IP=${SAMBA_HOST_IP}
     volumes:
       - samba_config:/var/lib/samba
@@ -40,70 +41,54 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=${AUTHENTIK_DB_USER}
-      - POSTGRES_PASSWORD=${AUTHENTIK_DB_PASSWORD}
+      - POSTGRES_PASSWORD=${AUTHENTIK_DB_PASSWORD:?set in .env}
       - POSTGRES_DB=${AUTHENTIK_DB_NAME}
     volumes:
       - authentik_db_data:/var/lib/postgresql/data
     networks:
       - authentik_db_net
 
-  authentik-redis:
-    image: redis:7-alpine
-    container_name: authentik-redis
-    restart: unless-stopped
-    command: --save 60 1 --loglevel warning
-    volumes:
-      - authentik_redis_data:/data
-    networks:
-      - authentik_cache_net
-
   authentik-server:
-    image: ghcr.io/goauthentik/server:latest
+    image: ghcr.io/goauthentik/server:2026.8.4
     container_name: authentik-server
     restart: unless-stopped
     command: server
     environment:
-      - AUTHENTIK_REDIS__HOST=authentik-redis
       - AUTHENTIK_POSTGRESQL__HOST=authentik-postgresql
       - AUTHENTIK_POSTGRESQL__USER=${AUTHENTIK_DB_USER}
       - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
-      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD}
-      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD:?set in .env}
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY:?set in .env}
     volumes:
-      - authentik_media:/media
+      - authentik_data:/data
       - authentik_custom_templates:/templates
     networks:
       - authentik_db_net
-      - authentik_cache_net
       - identity_net
       - external_net
     depends_on:
       authentik-postgresql:
         condition: service_started
-      authentik-redis:
-        condition: service_started
       samba-ad:
         condition: service_started
 
   authentik-worker:
-    image: ghcr.io/goauthentik/server:latest
+    image: ghcr.io/goauthentik/server:2026.8.4
     container_name: authentik-worker
     restart: unless-stopped
     command: worker
     environment:
-      - AUTHENTIK_REDIS__HOST=authentik-redis
       - AUTHENTIK_POSTGRESQL__HOST=authentik-postgresql
       - AUTHENTIK_POSTGRESQL__USER=${AUTHENTIK_DB_USER}
       - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
-      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD}
-      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD:?set in .env}
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY:?set in .env}
     volumes:
-      - authentik_media:/media
+      - authentik_data:/data
       - authentik_certs:/certs
       - authentik_custom_templates:/templates
     networks:
       - authentik_db_net
-      - authentik_cache_net
       - identity_net
     depends_on:
       authentik-server:
@@ -113,7 +98,7 @@ services:
   # 4. STORAGE & COLLABORATION: NEXTCLOUD AIO
   # =========================================================
   nextcloud-aio-mastercontainer:
-    image: nextcloud/all-in-one:latest
+    image: nextcloud/all-in-one:latest  # AIO mastercontainer is only published as a rolling tag; it pins its own child images
     container_name: nextcloud-aio-mastercontainer
     restart: unless-stopped
     environment:
@@ -136,14 +121,14 @@ services:
   # 5. COMMUNICATIONS: MAILCOW
   # =========================================================
   mailcow-mysql:
-    image: mariadb:10.5
+    image: mariadb:10.11
     container_name: mailcow-mysql
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=${MAILCOW_DB_ROOT_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MAILCOW_DB_ROOT_PASSWORD:?set in .env}
       - MYSQL_DATABASE=${MAILCOW_DB_NAME}
       - MYSQL_USER=${MAILCOW_DB_USER}
-      - MYSQL_PASSWORD=${MAILCOW_DB_PASSWORD}
+      - MYSQL_PASSWORD=${MAILCOW_DB_PASSWORD:?set in .env}
     volumes:
       - mailcow_mysql_data:/var/lib/mysql
     networks:
@@ -153,7 +138,7 @@ services:
         condition: service_started
 
   mailcow-redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: mailcow-redis
     restart: unless-stopped
     volumes:
@@ -162,7 +147,7 @@ services:
       - mailcow_db_net
 
   mailcow-rspamd:
-    image: mailcow/rspamd:latest
+    image: ghcr.io/mailcow/rspamd:3.14.3-1
     container_name: mailcow-rspamd
     restart: unless-stopped
     environment:
@@ -176,7 +161,7 @@ services:
       - mailcow-redis
 
   mailcow-postfix:
-    image: mailcow/postfix:latest
+    image: ghcr.io/mailcow/postfix:3.7.11-2
     container_name: mailcow-postfix
     restart: unless-stopped
     environment:
@@ -190,7 +175,7 @@ services:
       - mailcow-rspamd
 
   mailcow-dovecot:
-    image: mailcow/dovecot:latest
+    image: ghcr.io/mailcow/dovecot:2.3.21.1-1
     container_name: mailcow-dovecot
     restart: unless-stopped
     environment:
@@ -207,7 +192,7 @@ services:
   # 6. SECURITY & SOC: WAZUH SIEM
   # =========================================================
   wazuh-indexer:
-    image: wazuh/wazuh-indexer:latest
+    image: wazuh/wazuh-indexer:4.14.9
     container_name: wazuh-indexer
     restart: unless-stopped
     environment:
@@ -234,15 +219,15 @@ services:
         condition: service_started
 
   wazuh-manager:
-    image: wazuh/wazuh-manager:latest
+    image: wazuh/wazuh-manager:4.14.9
     container_name: wazuh-manager
     restart: unless-stopped
     environment:
       - INDEXER_URL=https://wazuh-indexer:9200
       - INDEXER_USERNAME=${WAZUH_INDEXER_USER}
-      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD:?set in .env}
       - WAZUH_API_USER=${WAZUH_API_USER}
-      - WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD}
+      - WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD:?set in .env}
     volumes:
       - wazuh_manager_data:/var/ossec/data
       - wazuh_manager_logs:/var/log/wazuh
@@ -255,15 +240,15 @@ services:
         condition: service_started
 
   wazuh-dashboard:
-    image: wazuh/wazuh-dashboard:latest
+    image: wazuh/wazuh-dashboard:4.14.9
     container_name: wazuh-dashboard
     restart: unless-stopped
     environment:
       - INDEXER_USERNAME=${WAZUH_INDEXER_USER}
-      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD}
+      - INDEXER_PASSWORD=${WAZUH_INDEXER_PASSWORD:?set in .env}
       - WAZUH_API_URL=https://wazuh-manager
       - WAZUH_API_USERNAME=${WAZUH_API_USER}
-      - WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD}
+      - WAZUH_API_PASSWORD=${WAZUH_API_PASSWORD:?set in .env}
     volumes:
       - wazuh_dashboard_config:/usr/share/wazuh-dashboard/config
     networks:
@@ -288,9 +273,6 @@ networks:
   authentik_db_net:
     driver: bridge
     internal: true
-  authentik_cache_net:
-    driver: bridge
-    internal: true
   mailcow_db_net:
     driver: bridge
     internal: true
@@ -302,8 +284,7 @@ volumes:
   samba_config:
   samba_data:
   authentik_db_data:
-  authentik_redis_data:
-  authentik_media:
+  authentik_data:
   authentik_certs:
   authentik_custom_templates:
   nextcloud_aio_mastercontainer:

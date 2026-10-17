@@ -1,16 +1,15 @@
+# MinIO (S3-compatible backup target for Velero)
+# Secret `minio-credentials` (keys: accesskey, secretkey) is NOT stored in Git.
+# Create it first with: scripts/bootstrap-secrets.sh
+#
+# MAINTENANCE WARNING: upstream stopped publishing community MinIO container
+# images in late 2025. This pin is the last known-good tag used by the project;
+# evaluate a maintained build (or an alternative S3 server) before relying on it,
+# and replicate this bucket to a second physical/geographic location.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: backup
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: minio-credentials
-  namespace: backup
-stringData:
-  accesskey: "minioadmin"  # replace in production
-  secretkey: "minioadmin"  # replace in production
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -28,6 +27,12 @@ spec:
       labels:
         app: minio
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: minio
           image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
@@ -48,6 +53,28 @@ spec:
               name: api
             - containerPort: 9001
               name: console
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: data
               mountPath: /data

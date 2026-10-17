@@ -1,3 +1,7 @@
+# Grafana
+# Secret `grafana-admin` (key: password) is NOT stored in Git.
+# Create it first with: scripts/bootstrap-secrets.sh
+# Namespace `monitoring` is created by prometheus.yaml.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,6 +9,8 @@ metadata:
   namespace: monitoring
 spec:
   replicas: 1
+  strategy:
+    type: Recreate  # RWO volume
   selector:
     matchLabels:
       app: grafana
@@ -13,9 +19,15 @@ spec:
       labels:
         app: grafana
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472  # grafana user in the official image
+        fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: grafana
-          image: grafana/grafana:latest
+          image: grafana/grafana:13.2.4
           ports:
             - containerPort: 3000
               name: web
@@ -27,13 +39,40 @@ spec:
                   key: password
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: web
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: web
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: grafana-storage
           persistentVolumeClaim:
             claimName: grafana-data
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -41,22 +80,14 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
-  type: NodePort
+  # ClusterIP by default; expose through an Ingress with TLS (cert-manager).
+  type: ClusterIP
   ports:
     - port: 80
       targetPort: 3000
       name: web
   selector:
     app: grafana
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: grafana-admin
-  namespace: monitoring
-type: Opaque
-stringData:
-  password: "SovereignMonitor2025!" # Updated for production readiness
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

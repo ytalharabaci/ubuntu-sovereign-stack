@@ -1,32 +1,18 @@
-version: '3.8'
+# Minimal single-host demo stack. Requires a populated .env (see .env.example):
+#   docker compose -f docker-compose.aio.yml --env-file .env up -d
+#
+# Mail is intentionally not part of this file: mailcow is a multi-container
+# stack, not a single image. Use small-scale/mailcow/ for mail.
+# Wazuh is not included either; use the Wazuh services in docker-compose.yml.
 services:
-  mailcow:
-    image: mailcow/mailcow-dockerized:latest
-    container_name: mailcow
-    environment:
-      - MAILCOW_HOSTNAME=mail.local
-      - MAILCOW_TIMEZONE=Europe/Istanbul
-    ports:
-      - "25:25"    # SMTP
-      - "80:80"    # Web HTTP
-      - "443:443"  # Web HTTPS
-      - "465:465"  # SMTPS
-      - "587:587"  # Submission
-      - "993:993"  # IMAPS
-      - "995:995"  # POP3S
-      - "4190:4190" # Sieve
-      - "8081:8081" # Web admin (örnek)
-    volumes:
-      - mailcow_data:/var/lib/mailcow
-    restart: unless-stopped
   nextcloud:
-    image: nextcloud:28
+    image: nextcloud:32-apache
     container_name: nextcloud
     environment:
       - MYSQL_HOST=db
       - MYSQL_DATABASE=nextcloud
       - MYSQL_USER=nextcloud
-      - MYSQL_PASSWORD=nextcloudpass
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PASSWORD:?set in .env}
     ports:
       - "8080:80"
     volumes:
@@ -39,56 +25,77 @@ services:
     image: mariadb:10.11
     container_name: nextcloud-db
     environment:
-      - MYSQL_ROOT_PASSWORD=supersecret
+      - MYSQL_ROOT_PASSWORD=${NEXTCLOUD_DB_ROOT_PASSWORD:?set in .env}
       - MYSQL_DATABASE=nextcloud
       - MYSQL_USER=nextcloud
-      - MYSQL_PASSWORD=nextcloudpass
+      - MYSQL_PASSWORD=${NEXTCLOUD_DB_PASSWORD:?set in .env}
     volumes:
       - db_data:/var/lib/mysql
     restart: unless-stopped
 
   authentik:
-    image: authentik/authentik:2024.2.2
+    image: ghcr.io/goauthentik/server:2026.8.4
     container_name: authentik
+    command: server
     environment:
-      - AUTHENTIK_SECRET_KEY=changeme
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY:?set in .env}
       - AUTHENTIK_POSTGRESQL__HOST=authentik-db
       - AUTHENTIK_POSTGRESQL__USER=authentik
-      - AUTHENTIK_POSTGRESQL__PASSWORD=authentikpass
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD:?set in .env}
       - AUTHENTIK_POSTGRESQL__NAME=authentik
     ports:
       - "9000:9000"
+    volumes:
+      - authentik_data:/data
+    depends_on:
+      - authentik-db
+    restart: unless-stopped
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2026.8.4
+    container_name: authentik-worker
+    command: worker
+    environment:
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY:?set in .env}
+      - AUTHENTIK_POSTGRESQL__HOST=authentik-db
+      - AUTHENTIK_POSTGRESQL__USER=authentik
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${AUTHENTIK_DB_PASSWORD:?set in .env}
+      - AUTHENTIK_POSTGRESQL__NAME=authentik
+    volumes:
+      - authentik_data:/data
     depends_on:
       - authentik-db
     restart: unless-stopped
 
   authentik-db:
-    image: postgres:15
+    image: postgres:16-alpine
     container_name: authentik-db
     environment:
       - POSTGRES_DB=authentik
       - POSTGRES_USER=authentik
-      - POSTGRES_PASSWORD=authentikpass
+      - POSTGRES_PASSWORD=${AUTHENTIK_DB_PASSWORD:?set in .env}
     volumes:
       - authentik_db_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   samba:
+    # WARNING: dperson/samba is unmaintained (last image 2021) and only ships a
+    # rolling tag. Kept for demo purposes; replace before any real use.
     image: dperson/samba:latest
     container_name: samba
     environment:
       - USERID=1000
       - GROUPID=1000
+      - USER=${SMB_SHARE_USER:?set in .env};${SMB_SHARE_PASSWORD:?set in .env}
+      - SHARE=share;/mount;yes;no;no;all
     ports:
-      - "139:139"
       - "445:445"
     volumes:
       - samba_data:/mount
-    command: "-u \"user;password\" -s \"share;/mount;yes;no;no;all\""
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0
     container_name: prometheus
     ports:
       - "9090:9090"
@@ -97,30 +104,22 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.4
     container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set in .env}
+      - GF_USERS_ALLOW_SIGN_UP=false
     ports:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
     restart: unless-stopped
 
-  wazuh:
-    image: wazuh/wazuh:4.7.3
-    container_name: wazuh
-    ports:
-      - "55000:55000"
-      - "1514:1514/udp"
-    volumes:
-      - wazuh_data:/var/ossec/data
-    restart: unless-stopped
-
 volumes:
-  mailcow_data:
   nextcloud_data:
   db_data:
+  authentik_data:
   authentik_db_data:
   samba_data:
   prometheus_data:
   grafana_data:
-  wazuh_data:

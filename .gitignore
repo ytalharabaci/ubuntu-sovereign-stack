@@ -1,0 +1,24 @@
+# Secrets and local environment files
+.env
+*.env
+!*.env.example
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Kubeconfigs fetched from RKE2 servers
+kubeconfig
+*.kubeconfig
+rke2.yaml
+
+# Ansible
+*.retry
+.ansible/
+
+# Local lab tooling
+.vagrant/
+*.log
