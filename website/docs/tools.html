@@ -44,7 +44,7 @@
                             <tbody>
                                 <tr><td><strong>Operating System</strong></td><td><strong>Ubuntu Server LTS</strong></td><td>5y security updates; broad ecosystem; HWE kernel support.</td></tr>
                                 <tr><td><strong>Orchestration</strong></td><td><strong>Kubernetes (RKE2) + Rancher</strong></td><td>FIPS-capable K8s; Rancher UI/RBAC/upgrade pipeline.</td></tr>
-                                <tr><td><strong>Container Runtime</strong></td><td><strong>Podman</strong></td><td>Daemonless/rootless; Docker explicitly excluded to reduce attack surface.</td></tr>
+                                <tr><td><strong>Container Runtime</strong></td><td><strong>containerd</strong> (bundled with RKE2) · Podman on admin/build hosts</td><td>Kubernetes workloads run on RKE2&#39;s containerd. Podman (daemonless/rootless) builds images and runs local containers; no Docker daemon.</td></tr>
                                 <tr><td><strong>Identity</strong></td><td><strong>Samba 4 AD</strong></td><td>AD-compatible source of truth; avoids CAL licensing.</td></tr>
                                 <tr><td><strong>SSO / MFA</strong></td><td><strong>Authentik</strong></td><td>OIDC/SAML; WebAuthn/TOTP; bridges LDAP/AD.</td></tr>
                                 <tr><td><strong>Collaboration</strong></td><td><strong>Zimbra CE + ClamAV + SpamAssassin</strong></td><td>Exchange/O365 alternative with built-in AV/AS.</td></tr>

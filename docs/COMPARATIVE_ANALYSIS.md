@@ -135,7 +135,7 @@ Cloud providers like Azure design their services to be "sticky." This lock-in ma
 
 ### 5.2 The Portability of the Sovereign Stack
 The proposed stack relies on open standards:
-*   **Compute:** Kubernetes (RKE2) and Containers (Podman) are the universal language of modern compute. A container running on the Sovereign Stack can run on AWS, Azure, Google Cloud, or a laptop without modification.
+*   **Compute:** Kubernetes (RKE2) and OCI containers (containerd, Podman) are the universal language of modern compute. A container running on the Sovereign Stack can run on AWS, Azure, Google Cloud, or a laptop without modification.
 *   **Infrastructure as Code (IaC):** Ansible playbooks describe the infrastructure in code (YAML). This ensures Reproducibility. The entire stack can be torn down and rebuilt from bare metal using the Ansible inventory and playbooks.
 
 This architecture grants Strategic Autonomy. If the hardware vendor fails, the stack runs on different hardware. If the data center facility is compromised, the stack can be redeployed elsewhere. There is no proprietary API lock-in. The organization owns the platform, not just the data on it.

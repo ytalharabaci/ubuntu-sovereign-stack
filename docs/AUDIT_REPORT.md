@@ -1,7 +1,15 @@
-# Repository Audit & Enhancement Summary
+# Historical Documentation Gap Analysis (2024)
 
-## Audit Date
-2024
+> **This is not a validation or security audit report.** It is a 2024 review
+> of documentation gaps, written before any end-to-end deployment test. Its
+> "production-ready" statements were not backed by test evidence and are
+> **withdrawn**. A 2026-10 static technical review found hardcoded credentials,
+> an RKE2 playbook that did not separate servers/agents, unpinned images and
+> other issues, which are addressed in the repository since. For current status
+> see [TEST_RESULTS.md](TEST_RESULTS.md) and [../SECURITY.md](../SECURITY.md).
+
+## Review Date
+2024 (historical)
 
 ## Executive Summary
 
@@ -333,15 +341,11 @@ kubectl top nodes  # metrics flowing
 
 The Ubuntu Sovereign Stack repository now provides **complete operational documentation** for deploying and managing a production-grade, on-premises Kubernetes infrastructure with sovereign identity and collaboration services. The audit identified gaps in deployment procedures, and all critical gaps have been addressed with practical, validated guides.
 
-**The stack is ready for:**
-- ✅ Production deployment (3–8 node HA clusters)
-- ✅ Lab/dev environments (local or 3-node test)
-- ✅ Operator training and onboarding
-- ✅ Disaster recovery procedures
-- ✅ Day-2 operations and maintenance
+**Superseded (2026-10-17):** the readiness claims originally listed here have been withdrawn.
+No production, HA or disaster-recovery readiness is claimed until it is
+recorded with evidence in [TEST_RESULTS.md](TEST_RESULTS.md).
 
 ---
 
-**Audit Completed:** 2024  
-**Status:** Ready for Use  
-**Next Review:** Q4 2024 (after first production deployment)
+**Review Completed:** 2024 (historical)  
+**Status:** Superseded, see TEST_RESULTS.md

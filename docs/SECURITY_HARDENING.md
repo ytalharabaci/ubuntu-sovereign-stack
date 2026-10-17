@@ -10,21 +10,69 @@ Controls to secure the Ubuntu Sovereign Stack across Kubernetes, runtime, identi
 
 ## Network Policies
 - Default deny per namespace; only allow required egress/ingress
-- Identity namespace: allow Authentik ↔ Postgres/Redis; block internet egress except updates
+- Identity namespace: allow Authentik ↔ Postgres and Authentik → Samba LDAP (`core`); block internet egress except updates
 - Monitoring: allow Prometheus scrapes; restrict Grafana to ingress/LB
 - Backup: allow Velero ↔ MinIO; block public egress
 - Apps: expose only via Ingress/LoadBalancer; deny pod-to-pod by default
 
-Example baseline (adapt per namespace):
+Baseline set per namespace (apply all three together, then add explicit allow
+rules per service; a default-deny on its own breaks DNS and every connection).
+Replace `NAMESPACE`:
+
 ```yaml
+# 1. Deny all ingress and egress by default
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny
+  namespace: NAMESPACE
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
+---
+# 2. Allow DNS to the cluster DNS service (RKE2: CoreDNS in kube-system)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: NAMESPACE
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# 3. Allow traffic between pods of the same namespace (app <-> its database)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: NAMESPACE
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
 ```
+
+Then add per-service rules, for example: ingress controller → Authentik/Grafana,
+Prometheus (`monitoring`) → scrape ports in each namespace, Authentik
+(`identity`) → Samba `core:389/636`, Velero/node-agent → MinIO `backup:9000`.
+Verify each rule with a test pod before enforcing it in production. A fully
+tested policy set is tracked as future work in [TEST_RESULTS.md](TEST_RESULTS.md).
 
 ## Pod Security / PSA
 - Enforce baseline or restricted Pod Security Admission labels on namespaces
@@ -39,7 +87,7 @@ spec:
 - Encrypt at rest (Longhorn supports replica encryption if enabled)
 
 ## Supply Chain & Images
-- Pin images to digests; avoid `latest`
+- Pin images to explicit versions (done in this repo) and preferably digests; never `latest`. CI fails on known HIGH/CRITICAL misconfigurations (Trivy)
 - Scan images (Trivy/GHCR scanning) before promotion
 - Allowlist registries; block public pulls in production
 - Enable admission checks (e.g., kyverno/gatekeeper) for image policy and mandatory labels
@@ -47,7 +95,7 @@ spec:
 ## Resource Governance
 - Set requests/limits for all workloads; prevent noisy-neighbor issues
 - Quotas per namespace for CPU, memory, PVC count, and object counts
-- Liveness/readiness probes required; startup probes for heavy apps (Zimbra)
+- Liveness/readiness probes required; startup probes for slow-starting apps (e.g. Authentik)
 
 ## Logging & Monitoring
 - Centralize logs (Fluentd/Loki/ELK optional); ensure Wazuh agents enrolled

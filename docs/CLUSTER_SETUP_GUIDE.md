@@ -1,5 +1,8 @@
 # Kubernetes Cluster Setup Guide
 
+> **Status: target architecture, lab / unverified.** The HA procedure below has
+> not yet been executed end-to-end; see [TEST_RESULTS.md](TEST_RESULTS.md).
+
 ## Overview
 This guide provides step-by-step instructions to deploy the Ubuntu Sovereign Stack on a bare-metal or IaaS Kubernetes cluster using RKE2, managed by Rancher.
 
@@ -19,7 +22,7 @@ This guide provides step-by-step instructions to deploy the Ubuntu Sovereign Sta
 | **Worker Nodes** | 2–5x (min 8 CPUs, 16GB RAM, 100GB disk each) | Workload distribution; Longhorn storage replication |
 | **Network** | Layer 2 connectivity; static IPs | MetalLB L2 mode; DNS resolution |
 | **Storage** | Raw block devices (for Longhorn) | Replicated distributed storage |
-| **Total Cluster** | 5–8 nodes (minimum) | Production-ready HA setup |
+| **Total Cluster** | 5–8 nodes (minimum) | Target HA topology (not yet verified, see TEST_RESULTS.md) |
 
 ### 1.2 Network Planning
 
@@ -45,36 +48,45 @@ Firewall Rules (inbound to control plane):
 
 ### 1.3 Infrastructure Inventory
 
-Create `infrastructure/hosts.ini`:
+Edit `infrastructure/hosts.ini`. Servers run the control plane and etcd; use an
+**odd number** (3 for HA tolerates one server failure, 5 tolerates two).
 
 ```ini
-[control]
-cp1 ansible_host=192.168.1.10 ansible_user=ubuntu
-cp2 ansible_host=192.168.1.11 ansible_user=ubuntu
-cp3 ansible_host=192.168.1.12 ansible_user=ubuntu
+[rke2_servers]
+192.168.1.10   # cp1 - bootstraps the cluster
+192.168.1.11   # cp2
+192.168.1.12   # cp3
 
-[workers]
-w1 ansible_host=192.168.1.20 ansible_user=ubuntu
-w2 ansible_host=192.168.1.21 ansible_user=ubuntu
-w3 ansible_host=192.168.1.22 ansible_user=ubuntu
+[rke2_agents]
+192.168.1.20   # w1
+192.168.1.21   # w2
+192.168.1.22   # w3
 
-[all:vars]
-ansible_ssh_private_key_file=~/.ssh/id_rsa
+[k8s:children]
+rke2_servers
+rke2_agents
+
+[k8s:vars]
+ansible_user=ubuntu
+ansible_ssh_private_key_file=~/.ssh/id_ed25519
+# HA: a fixed registration address (VIP / DNS / L4 load balancer on 9345 + 6443)
+rke2_api_endpoint=192.168.1.50
+rke2_tls_san=kube-api.sovereign.lan
 ```
+
+The RKE2 version is pinned in `infrastructure/group_vars/k8s.yml`.
+
+For HA, the registration address must be reachable **before** the playbook joins
+cp2/cp3. Point it at cp1 first (or configure the load balancer with cp1 as the
+only backend), then add cp2/cp3 as backends once they are Ready.
 
 ### 1.4 Pre-Deployment Verification
 
 Run from your Ansible control node:
 
 ```bash
-# Test SSH connectivity
-ansible -i infrastructure/hosts.ini all -m ping
-
-# Verify OS
-ansible -i infrastructure/hosts.ini all -m shell -a "lsb_release -a"
-
-# Check hardware specs
-ansible -i infrastructure/hosts.ini all -m shell -a "nproc && free -h && df -h /"
+ansible -i infrastructure/hosts.ini k8s -m ping
+ansible -i infrastructure/hosts.ini k8s -m shell -a "lsb_release -ds && nproc && free -h && df -h /"
 ```
 
 ---
@@ -84,295 +96,142 @@ ansible -i infrastructure/hosts.ini all -m shell -a "nproc && free -h && df -h /
 ### 2.1 Run Ansible Provisioning
 
 ```bash
-cd infrastructure
-
-# Install Ansible (if not already installed)
-sudo apt update && sudo apt install -y ansible
-
-# Run base provisioning across all nodes
-ansible-playbook -i hosts.ini setup-rke2.yml -v
-
-# Monitor output for errors; expect ~10 min per node
+ansible-playbook -i infrastructure/hosts.ini infrastructure/setup-rke2.yml
 ```
 
-**What this does:**
-- Updates OS packages (security patches)
-- Installs Podman (container runtime)
-- Downloads & installs RKE2 v1.28.10
-- Enables RKE2 systemd service
-- Symlinks kubectl, crictl tools
+**What this does (in order):**
+1. All nodes: OS updates, `open-iscsi`/`nfs-common` for Longhorn, swap off, RKE2 installer download.
+2. `rke2_servers[0]`: writes `/etc/rancher/rke2/config.yaml` (`tls-san`, kubeconfig mode 0600), installs and starts `rke2-server`, reads the node token.
+3. `rke2_servers[1:]`: join through `https://<rke2_api_endpoint>:9345` with the token, **one at a time**.
+4. `rke2_agents`: join as `rke2-agent`.
+5. Servers: `kubectl`/`crictl` symlinks and PATH.
 
-### 2.2 Bootstrap Control Plane (First Master)
+Kubernetes workloads run on RKE2's bundled **containerd**. Podman is not
+installed on cluster nodes; use it only on admin/build hosts if needed.
 
-SSH to the first control plane node and verify RKE2:
+The token is never written to the repository or printed (`no_log`).
 
-```bash
-ssh ubuntu@192.168.1.10
-
-# Wait for RKE2 to fully start
-sudo systemctl status rke2-server
-
-# Verify RKE2 is running
-sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml get nodes
-
-# Expected output: 1 node in "NotReady" (waiting for CNI)
-```
-
-### 2.3 Join Additional Control Nodes
-
-For each additional control plane node:
+### 2.2 Verify Cluster Readiness
 
 ```bash
-ssh ubuntu@192.168.1.11  # (or cp3)
-
-# Retrieve join token from first master
-TOKEN=$(ssh ubuntu@192.168.1.10 'cat /var/lib/rancher/rke2/server/node-token')
-
-# Set up RKE2 server joining
-cat <<EOF > /tmp/rke2-config.yaml
-server: https://192.168.1.10:6443
-token: $TOKEN
-EOF
-
-sudo INSTALL_RKE2_TYPE=server sh /tmp/install_rke2.sh
-
-# Start RKE2 server
-sudo systemctl start rke2-server
-sudo systemctl enable rke2-server
-```
-
-### 2.4 Join Worker Nodes
-
-For each worker node:
-
-```bash
-ssh ubuntu@192.168.1.20  # (or w2, w3)
-
-# Retrieve join token
-TOKEN=$(ssh ubuntu@192.168.1.10 'cat /var/lib/rancher/rke2/server/node-token')
-
-# Configure as agent (worker)
-cat <<EOF > /tmp/rke2-config.yaml
-server: https://192.168.1.10:6443
-token: $TOKEN
-EOF
-
-sudo INSTALL_RKE2_TYPE=agent sh /tmp/install_rke2.sh
-
-# Start RKE2 agent
-sudo systemctl start rke2-agent
-sudo systemctl enable rke2-agent
-```
-
-### 2.5 Verify Cluster Readiness
-
-From your local machine with kubeconfig:
-
-```bash
-# Copy kubeconfig from master
-scp ubuntu@192.168.1.10:/etc/rancher/rke2/rke2.yaml ~/.kube/sovereign-stack.yaml
-
-# Update server IP
-sed -i 's/127.0.0.1/192.168.1.10/g' ~/.kube/sovereign-stack.yaml
+ssh ubuntu@192.168.1.10 'sudo cat /etc/rancher/rke2/rke2.yaml' > ~/.kube/sovereign-stack.yaml
+chmod 600 ~/.kube/sovereign-stack.yaml
+sed -i 's/127.0.0.1/192.168.1.50/' ~/.kube/sovereign-stack.yaml   # API endpoint
 export KUBECONFIG=~/.kube/sovereign-stack.yaml
 
-# Verify all nodes are Ready
-kubectl get nodes
-
-# Expected output:
-# NAME   STATUS   ROLES                      AGE   VERSION
-# cp1    Ready    control-plane,etcd,master  2m    v1.28.10+rke2r1
-# cp2    Ready    control-plane,etcd,master  1m    v1.28.10+rke2r1
-# cp3    Ready    control-plane,etcd,master  1m    v1.28.10+rke2r1
-# w1     Ready    worker                     30s   v1.28.10+rke2r1
-# w2     Ready    worker                     30s   v1.28.10+rke2r1
-# w3     Ready    worker                     30s   v1.28.10+rke2r1
+kubectl get nodes -o wide
+# Expect 3 nodes with roles control-plane,etcd,master and 3 worker nodes, all Ready
 ```
+
+### 2.3 Manual join (reference)
+
+The playbook automates this. Manually, each joining node needs
+`/etc/rancher/rke2/config.yaml` **before** the service starts:
+
+```yaml
+server: https://192.168.1.50:9345   # supervisor port, not 6443
+token: <contents of /var/lib/rancher/rke2/server/node-token on cp1>
+```
+
+followed by `curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION=<pinned> INSTALL_RKE2_TYPE=server|agent sh -`
+and `sudo systemctl enable --now rke2-server` (or `rke2-agent`).
 
 ---
 
 ## Part 3: System Layer Installation
 
-Deploy cluster prerequisites in strict order:
+Deploy cluster prerequisites in this order. All chart versions are pinned.
 
-### 3.1 Install Cert-Manager
-
-Provides automated TLS certificate management:
+### 3.1 Longhorn Storage
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
-
-# Wait for deployment
-kubectl wait --for=condition=available --timeout=300s \
-  deployment/cert-manager -n cert-manager
-
-# Verify
-kubectl get pods -n cert-manager
-```
-
-### 3.2 Install MetalLB
-
-Provides L2 load balancer for bare-metal:
-
-```bash
-# Edit address pool in kubernetes/system/metallb.yaml
-# Change: 192.168.1.200-192.168.1.250 → YOUR_NETWORK_RANGE
-
-# Install MetalLB core (must do before applying config)
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
-
-# Wait for deployment
-kubectl wait --for=condition=available --timeout=300s \
-  deployment/controller -n metallb-system
-
-# Apply address pool config
-kubectl apply -f kubernetes/system/metallb.yaml
-
-# Verify
-kubectl get svc -A | grep LoadBalancer  # should see pending → assigned
-```
-
-### 3.3 Install Longhorn Storage
-
-Provides distributed block storage for stateful apps:
-
-```bash
-# Install Longhorn via Helm (recommended over static manifests)
-helm repo add longhorn https://charts.longhorn.io
-helm repo update
-
-helm install longhorn longhorn/longhorn \
-  --namespace longhorn-system \
-  --create-namespace \
-  --set defaultClass=true
-
-# Wait for CSI controller/node
-kubectl wait --for=condition=ready pod -l app=csi-attacher \
-  -n longhorn-system --timeout=600s
-
-# Verify storage class
+infrastructure/install-longhorn.sh
+kubectl -n longhorn-system rollout status deploy/longhorn-driver-deployer --timeout=10m
 kubectl get storageclass longhorn
 ```
 
-### 3.4 Install Rancher (Optional but Recommended)
-
-Provides cluster management UI:
+### 3.2 MetalLB
 
 ```bash
-# Run installation script
-cd infrastructure
-bash install-rancher.sh
-
-# Monitor Rancher startup
-kubectl logs -f deployment/rancher -n cattle-system
-
-# Retrieve admin password (if bootstrapped)
-kubectl get secret -n cattle-system bootstrap-password -o jsonpath='{.data.password}' | base64 -d
-
-# Access at https://rancher.sovereign.lan
+# Edit the address pool in kubernetes/system/metallb.yaml first
+helm repo add metallb https://metallb.github.io/metallb --force-update
+helm upgrade --install metallb metallb/metallb --version 0.16.1   -n metallb-system --create-namespace --wait
+kubectl apply -f kubernetes/system/metallb.yaml      # IPAddressPool + L2Advertisement
+kubectl -n metallb-system get ipaddresspools,l2advertisements
 ```
+
+### 3.3 cert-manager + Rancher
+
+```bash
+infrastructure/install-rancher.sh                 # cert-manager v1.21.2, Rancher 2.15.2
+kubectl apply -f kubernetes/system/cert-manager.yaml
+```
+
+The Rancher bootstrap password is random unless `RANCHER_BOOTSTRAP_PASSWORD` is
+set; the script prints the command to read it. Change it at first login.
+
+### 3.4 Secrets
+
+```bash
+scripts/bootstrap-secrets.sh
+```
+
+All credentials are generated in-cluster; none are stored in Git. Use
+`--rotate` to regenerate them (see OPERATIONAL_RUNBOOK.md for the follow-up
+steps inside each application).
 
 ---
 
 ## Part 4: Core Identity Services
 
-Deploy after system layer is ready:
-
-### 4.1 Deploy Samba AD + Authentik
-
 ```bash
-# Apply identity namespace and secrets
-# ⚠️ BEFORE APPLYING: Edit kubernetes/core/authentik.yaml
-# Replace:
-#   - postgres-password: "change-me"
-#   - authentik-secret-key: "generate-long-random-key"
+kubectl apply -f kubernetes/core/samba-ad.yaml       # namespace: core
+kubectl apply -f kubernetes/core/authentik.yaml      # namespace: identity
 
-# Generate secure secrets
-echo "Postgres: $(openssl rand -base64 32)"
-echo "Authentik: $(openssl rand -base64 32)"
-
-# Apply manifests
-kubectl apply -f kubernetes/core/samba-ad.yaml
-kubectl apply -f kubernetes/core/authentik.yaml
-
-# Wait for pods
-kubectl wait --for=condition=ready pod -l app=samba-ad \
-  -n identity --timeout=600s
-
-# Verify
-kubectl get pods -n identity
-kubectl get pvc -n identity  # check storage binding
+kubectl -n core wait --for=condition=ready pod -l app=samba-ad --timeout=600s
+kubectl -n identity rollout status deploy/authentik-server --timeout=600s
+kubectl get pvc -n core; kubectl get pvc -n identity
 ```
 
 ---
 
 ## Part 5: Applications Layer
 
-Deploy after core services are operational:
-
-### 5.1 Deploy Monitoring (Prometheus + Grafana + Wazuh)
+### 5.1 Monitoring (Prometheus + Grafana)
 
 ```bash
-# Create monitoring namespace and secrets
-kubectl apply -f kubernetes/monitoring/prometheus.yaml
+kubectl apply -f kubernetes/monitoring/prometheus.yaml   # creates namespace monitoring
 kubectl apply -f kubernetes/monitoring/grafana.yaml
-kubectl apply -f kubernetes/monitoring/wazuh.yaml
-
-# Verify persistence
-kubectl get pvc -n monitoring
-
-# Access Grafana via MetalLB LoadBalancer IP
-kubectl get svc -n monitoring grafana
-# http://<LOADBALANCER_IP>:3000 (default: admin/admin)
+kubectl -n monitoring rollout status deploy/grafana
 ```
 
-### 5.2 Deploy Backup (MinIO + Velero)
+Grafana is `ClusterIP`; expose it with an Ingress + cert-manager TLS. User
+`admin`, password in secret `monitoring/grafana-admin`.
+
+Wazuh (`kubernetes/monitoring/wazuh.yaml`, namespace `security`) is a partial
+reference manifest without the indexer. Use the upstream `wazuh-kubernetes`
+manifests (v4.14.9) for a working SIEM.
+
+### 5.2 Backup (MinIO + Velero)
 
 ```bash
-# Create backup namespace and credentials
-# ⚠️ BEFORE APPLYING: Update MinIO credentials in kubernetes/backup/minio.yaml
-
 kubectl apply -f kubernetes/backup/minio.yaml
-kubectl apply -f kubernetes/backup/velero.yaml
-
-# Wait for MinIO and Velero
-kubectl wait --for=condition=ready pod -l app=minio \
-  -n backup --timeout=300s
-
-# Configure default backup schedule (after Velero is ready)
-kubectl apply -f - <<EOF
-apiVersion: velero.io/v1
-kind: Schedule
-metadata:
-  name: daily-backup
-  namespace: velero
-spec:
-  schedule: "0 2 * * *"  # 2 AM UTC daily
-  template:
-    includedNamespaces: ['*']
-    storageLocation: default
-    ttl: 720h  # 30 days
-EOF
-
-# Verify
-kubectl get backupstoragelocations -n velero
+kubectl -n backup wait --for=condition=ready pod -l app=minio --timeout=300s
+# create bucket backup-uss in MinIO, then install Velero with Helm as described
+# in the header of kubernetes/backup/velero.yaml
+kubectl apply -f kubernetes/backup/velero.yaml        # BSL, CSI snapshot class, daily schedule
+velero backup-location get
 ```
 
-### 5.3 Deploy Collaboration (Zimbra)
+Replicate the MinIO bucket to a second physical/geographic location and run a
+restore drill before relying on these backups.
 
-```bash
-# Apply Zimbra
-kubectl apply -f kubernetes/apps/zimbra.yaml
+### 5.3 Collaboration (Zimbra) - experimental
 
-# Wait for Zimbra server
-kubectl wait --for=condition=ready pod -l app=zimbra \
-  -n apps --timeout=900s
-
-# Get LoadBalancer IP
-kubectl get svc -n apps zimbra
-
-# Access at https://<LOADBALANCER_IP> → Admin Console (port 7071)
-```
+Zimbra is **not** part of the supported flow: there is no trusted, maintained
+container image. The manifest lives in `kubernetes/experimental/zimbra.yaml`
+(namespace `collaboration`) and must not be deployed until an image has been
+built, pinned and tested.
 
 ---
 
@@ -391,7 +250,7 @@ kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeed
 kubectl get sc,pv,pvc -A
 
 # Services and IPs
-kubectl get svc -A | grep -E "^(NAMESPACE|default|identity|monitoring|apps|backup|longhorn)"
+kubectl get svc -A | grep -E "^(NAMESPACE|default|core|identity|monitoring|security|backup|longhorn)"
 ```
 
 ### 6.2 CNI & Networking Verification
@@ -451,7 +310,7 @@ kubectl delete pod test-storage pvc test-pvc
 
 ```bash
 # Check ingress controller
-kubectl get pods -n kube-system | grep traefik
+kubectl get pods -n kube-system | grep -E "ingress|traefik"   # RKE2 bundled ingress controller
 
 # Test ingress (if any deployed)
 kubectl get ingress -A
@@ -552,7 +411,7 @@ kubectl get -n longhorn-system volumereplicasets.longhorn.io
 
 ```bash
 # Reset bootstrap password
-kubectl delete secret bootstrap-password -n cattle-system
+kubectl delete secret bootstrap-secret -n cattle-system
 
 # Restart Rancher
 kubectl rollout restart deployment/rancher -n cattle-system
@@ -566,20 +425,22 @@ kubectl logs -f deployment/rancher -n cattle-system
 ## Appendix: Deployment Order Dependency Graph
 
 ```
-1. RKE2 Cluster (all nodes)
+1. RKE2 Cluster (servers first, then agents)
    ↓
-2. Cert-Manager
+2. Longhorn (storage)
    ↓
 3. MetalLB
-   ├→ 4a. Longhorn (storage)
-   ├→ 4b. Rancher (management UI) [optional]
+   ↓
+4. cert-manager + Rancher (management UI) [Rancher optional]
+   ↓
+4b. Secrets (scripts/bootstrap-secrets.sh)
    ↓
 5. Core Services (Samba AD + Authentik)
    ↓
 6. Apps Layer
    ├→ 6a. Monitoring (Prometheus + Grafana + Wazuh)
    ├→ 6b. Backup (MinIO + Velero)
-   └→ 6c. Collaboration (Zimbra)
+   └→ 6c. Collaboration (Zimbra) [experimental, not deployed]
 ```
 
 ---
@@ -592,6 +453,6 @@ kubectl logs -f deployment/rancher -n cattle-system
 
 ---
 
-**Last Updated:** 2024  
-**Status:** Production-Ready  
+**Last Updated:** 2026-10-17  
+**Status:** Target architecture, lab / unverified (see [TEST_RESULTS.md](TEST_RESULTS.md))  
 **Support:** See README.md for community channels
