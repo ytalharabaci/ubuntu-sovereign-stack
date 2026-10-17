@@ -1,0 +1,14 @@
+# Trivy ignore list. Every entry is scoped to specific files and justified.
+# Revisit when the upstream images change; see docs/TEST_RESULTS.md.
+misconfigurations:
+  - id: KSV-0014  # readOnlyRootFilesystem
+    paths:
+      - kubernetes/core/authentik.yaml   # server/worker write to the image (static assets, blueprints); unverified with a read-only root
+      - kubernetes/core/samba-ad.yaml    # provisions /etc/samba and /etc/krb5.conf at runtime
+      - kubernetes/monitoring/wazuh.yaml # manager/dashboard write config under /var/ossec and /usr/share at startup
+    statement: Upstream images require a writable root filesystem.
+  - id: KSV-0118  # default (root-capable) security context
+    paths:
+      - kubernetes/core/samba-ad.yaml    # AD DC image runs samba as root and needs NET_ADMIN
+      - kubernetes/monitoring/wazuh.yaml # images run an s6 init as root
+    statement: Upstream images cannot run as non-root; privilege escalation is still blocked.

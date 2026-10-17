@@ -1,0 +1,12 @@
+# gitleaks configuration: default rules plus project allowlist.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and documentation examples"
+regexes = [
+  '''CHANGE_ME''',
+]
+paths = [
+  '''website/''',
+]

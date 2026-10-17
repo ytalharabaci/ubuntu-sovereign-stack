@@ -9,17 +9,18 @@ _Last updated: 2026-10-17_
 ## Static validation (CI)
 
 Run on every push / pull request by [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
-See the Actions tab for the actual run history.
+"Passing locally" means the same tool and version was run on a developer
+machine; GitHub Actions run history is the authoritative record.
 
 | Check | Scope | Status |
 | --- | --- | --- |
 | yamllint (strict) | all YAML except `website/`, `small-scale/mailcow/` | Passing locally 2026-10-17 |
 | kubeconform (strict, K8s 1.35 + CRDs catalog) | `kubernetes/` (41 resources) | Passing locally 2026-10-17 |
 | gitleaks (working tree) | repository | Passing locally 2026-10-17 |
-| ansible-lint + syntax check | `infrastructure/` | CI only |
-| ShellCheck | `infrastructure/*.sh`, `scripts/*.sh` | CI only |
-| Trivy config (HIGH/CRITICAL) | repository (excl. `website/`, `small-scale/mailcow/`, `kubernetes/experimental/`) | CI only |
-| `docker compose config` | `small-scale/*.yml` | CI only |
+| ansible-lint (production profile) + syntax check | `infrastructure/` | Passing locally 2026-10-17 (ansible-lint 26.10.1, ansible-core 2.21.5) |
+| ShellCheck | `infrastructure/*.sh`, `scripts/*.sh` | Passing locally 2026-10-17 (0.11.0) |
+| Trivy config (HIGH/CRITICAL) | repository (excl. `website/`, `small-scale/mailcow/`, `kubernetes/experimental/`) | Passing locally 2026-10-17 (v0.76.0, with `.trivyignore.yaml`) |
+| `docker compose config` | `small-scale/*.yml` with `.env.example` | Passing locally 2026-10-17 |
 
 ## Deployment verification
 
