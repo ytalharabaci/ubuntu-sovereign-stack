@@ -1,3 +1,6 @@
+# Samba 4 Active Directory domain controller
+# Secret `samba-secrets` (key: admin-password) is NOT stored in Git.
+# Create it first with: scripts/bootstrap-secrets.sh
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -55,10 +58,31 @@ spec:
     spec:
       containers:
         - name: samba-ad
-          image: nowsci/samba-domain:latest
+          # Community image published as dated monthly builds; pin and review on bump.
+          image: nowsci/samba-domain:20261001025201
           securityContext:
+            # A domain controller manages its own network config/DNS; NET_ADMIN
+            # is required by the image. Privilege escalation is still blocked.
+            allowPrivilegeEscalation: false
             capabilities:
               add: ["NET_ADMIN"]
+          readinessProbe:
+            tcpSocket:
+              port: 389
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          livenessProbe:
+            tcpSocket:
+              port: 389
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
           env:
             - name: DOMAIN
               value: "INTERNAL.SOVEREIGN.LAN"
@@ -102,12 +126,3 @@ spec:
         resources:
           requests:
             storage: 10Gi
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: samba-secrets
-  namespace: core
-type: Opaque
-stringData:
-  admin-password: "change-this"

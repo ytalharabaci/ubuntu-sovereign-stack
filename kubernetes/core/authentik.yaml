@@ -1,78 +1,25 @@
+# Authentik (SSO / IdP)
+# Secret `authentik-secrets` (keys: postgres-password, authentik-secret-key) is
+# NOT stored in Git. Create it first with: scripts/bootstrap-secrets.sh
+# Since 2025.10 authentik no longer requires Redis; PostgreSQL is the only dependency.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: identity
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: authentik-secrets
-  namespace: identity
-type: Opaque
-stringData:
-  postgres-password: "SovereignIdentityDB2025!" # Updated for production readiness
-  authentik-secret-key: "SovereignKey_9988776655_Secure!" # Updated for production readiness
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: authentik-media
+  name: authentik-data
   namespace: identity
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
     requests:
       storage: 10Gi
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: authentik-redis
-  namespace: identity
-  labels:
-    app: authentik-redis
-spec:
-  serviceName: authentik-redis
-  replicas: 1
-  selector:
-    matchLabels:
-      app: authentik-redis
-  template:
-    metadata:
-      labels:
-        app: authentik-redis
-    spec:
-      containers:
-        - name: redis
-          image: redis:7-alpine
-          args: ["--appendonly", "yes"]
-          ports:
-            - containerPort: 6379
-              name: redis
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data
-  volumeClaimTemplates:
-    - metadata:
-        name: redis-data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 5Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: authentik-redis
-  namespace: identity
-spec:
-  ports:
-    - port: 6379
-      targetPort: 6379
-      name: redis
-  selector:
-    app: authentik-redis
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -92,9 +39,15 @@ spec:
       labels:
         app: authentik-postgres
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70  # postgres user in the alpine image
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
-          image: postgres:15-alpine
+          image: postgres:16-alpine
           env:
             - name: POSTGRES_DB
               value: "authentik"
@@ -105,9 +58,31 @@ spec:
                 secretKeyRef:
                   name: authentik-secrets
                   key: postgres-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
               name: postgres
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U authentik -d authentik"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U authentik -d authentik"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -153,13 +128,17 @@ spec:
         app: authentik
         component: server
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: authentik
-          image: ghcr.io/goauthentik/server:2023.10
-          command: ["./server"]
+          image: ghcr.io/goauthentik/server:2026.8.4
+          args: ["server"]
           env:
-            - name: AUTHENTIK_REDIS__HOST
-              value: "authentik-redis"
             - name: AUTHENTIK_POSTGRESQL__HOST
               value: "authentik-postgres"
             - name: AUTHENTIK_POSTGRESQL__USER
@@ -181,13 +160,40 @@ spec:
               name: http
             - containerPort: 9443
               name: https
+          startupProbe:
+            httpGet:
+              path: /-/health/live/
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /-/health/ready/
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/health/live/
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
-            - name: media
-              mountPath: /media
+            - name: data
+              mountPath: /data
       volumes:
-        - name: media
+        - name: data
           persistentVolumeClaim:
-            claimName: authentik-media
+            claimName: authentik-data
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -209,13 +215,17 @@ spec:
         app: authentik
         component: worker
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/goauthentik/server:2023.10
-          command: ["./worker"]
+          image: ghcr.io/goauthentik/server:2026.8.4
+          args: ["worker"]
           env:
-            - name: AUTHENTIK_REDIS__HOST
-              value: "authentik-redis"
             - name: AUTHENTIK_POSTGRESQL__HOST
               value: "authentik-postgres"
             - name: AUTHENTIK_POSTGRESQL__USER
@@ -232,6 +242,19 @@ spec:
                 secretKeyRef:
                   name: authentik-secrets
                   key: authentik-secret-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # authentik-data is ReadWriteOnce and mounted by the server only.
+          # Use an RWX volume or S3 media storage if the worker needs /data.
 ---
 apiVersion: v1
 kind: Service

@@ -1,20 +1,27 @@
-# Apply Velero CRDs first (helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts && helm install velero vmware-tanzu/velero ...)
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: velero
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cloud-credentials
-  namespace: velero
-stringData:
-  cloud: |
-    [default]
-    aws_access_key_id=minioadmin
-    aws_secret_access_key=minioadmin
----
+# Velero configuration (backup schedule + storage location)
+#
+# Supported install path is the official Helm chart, which ships the CRDs,
+# RBAC and the AWS (S3) object-store plugin. Install it BEFORE applying this file:
+#
+#   scripts/bootstrap-secrets.sh            # creates velero/cloud-credentials from the MinIO keys
+#   helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
+#   helm install velero vmware-tanzu/velero --version 12.2.1 -n velero --create-namespace \
+#     --set image.tag=v1.18.4 \
+#     --set initContainers[0].name=velero-plugin-for-aws \
+#     --set initContainers[0].image=velero/velero-plugin-for-aws:v1.14.4 \
+#     --set initContainers[0].volumeMounts[0].mountPath=/target \
+#     --set initContainers[0].volumeMounts[0].name=plugins \
+#     --set credentials.existingSecret=cloud-credentials \
+#     --set configuration.features=EnableCSI \
+#     --set deployNodeAgent=true \
+#     --set backupsEnabled=false --set snapshotsEnabled=false
+#
+# Volume snapshots use CSI (Longhorn's snapshot class below); there is no
+# provider-specific VolumeSnapshotLocation for Longhorn.
+#
+# IMPORTANT: Kubernetes-object backups are not consistent database backups.
+# Run application-level dumps (pg_dump, mysqldump) as well, and prove restores
+# with a restore drill (see docs/OPERATIONAL_RUNBOOK.md, docs/TEST_RESULTS.md).
 apiVersion: velero.io/v1
 kind: BackupStorageLocation
 metadata:
@@ -22,87 +29,27 @@ metadata:
   namespace: velero
 spec:
   provider: aws
+  default: true
   objectStorage:
     bucket: backup-uss
+  credential:
+    name: cloud-credentials
+    key: cloud
   config:
     region: us-east-1
     s3ForcePathStyle: "true"
     s3Url: http://minio.backup.svc:9000
 ---
-apiVersion: velero.io/v1
-kind: VolumeSnapshotLocation
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
 metadata:
-  name: longhorn
-  namespace: velero
-spec:
-  provider: aws
-  config:
-    region: us-east-1
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: velero
-  namespace: velero
+  name: longhorn-velero
   labels:
-    component: velero
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      component: velero
-  template:
-    metadata:
-      labels:
-        component: velero
-    spec:
-      serviceAccountName: velero
-      containers:
-        - name: velero
-          image: velero/velero:v1.13.0
-          imagePullPolicy: IfNotPresent
-          command:
-            - /velero
-          args:
-            - server
-            - --uploader-type=kopia
-            - --features=EnableCSI
-          env:
-            - name: AWS_SHARED_CREDENTIALS_FILE
-              value: /credentials/cloud
-            - name: AWS_REGION
-              value: us-east-1
-          volumeMounts:
-            - name: plugins
-              mountPath: /plugins
-            - name: cloud-credentials
-              mountPath: /credentials
-              readOnly: true
-      volumes:
-        - name: plugins
-          emptyDir: {}
-        - name: cloud-credentials
-          secret:
-            secretName: cloud-credentials
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: velero
-subjects:
-  - kind: ServiceAccount
-    name: velero
-    namespace: velero
-roleRef:
-  kind: ClusterRole
-  name: velero
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: velero
-  namespace: velero
+    velero.io/csi-volumesnapshot-class: "true"
+driver: driver.longhorn.io
+deletionPolicy: Delete
+parameters:
+  type: snap
 ---
 apiVersion: velero.io/v1
 kind: Schedule
@@ -115,5 +62,8 @@ spec:
     ttl: 720h
     includedNamespaces:
       - "*"
+    excludedNamespaces:
+      - kube-system
+      - velero
     storageLocation: default
     snapshotVolumes: true
