@@ -14,7 +14,7 @@ The foundation consists of **3 Physical Servers** configured as a High-Availabil
 Instead of legacy virtualization, the system uses **Kubernetes (RKE2)** managed by **Rancher**.
 *   **RKE2**: Used for its FIPS compliance and secure-by-default configuration.
 *   **Rancher:** Provides the "Single Pane of Glass" for lifecycle management, RBAC, and workload visibility.
-*   **Runtime:** **Podman** is mandated as the container engine (Daemonless/Rootless) to mitigate security risks associated with the Docker daemon.
+*   **Runtime:** Kubernetes workloads run on **containerd**, which RKE2 bundles and manages. **Podman** (daemonless/rootless) is the recommended tool on admin and build hosts for building images and running local containers; it is not the Kubernetes runtime. The Docker daemon is not used.
 
 ## Logical Architecture & Namespaces
 
@@ -22,8 +22,8 @@ Services are logically isolated into Kubernetes Namespaces for security and reso
 
 | Namespace | Services | Role & Configuration |
 | :--- | :--- | :--- |
-| `infrastructure` | **Samba 4 AD**<br>**Authentik** | **Core Identity:** AD serves as the "Source of Truth". Authentik syncs via LDAP to provide SSO (SAML/OIDC) and MFA. |
-| `collaboration` | **Zimbra Suite** | **Business Apps:** Email, Calendar, Contacts. Data persists on Longhorn volumes; secured by ClamAV/SpamAssassin. |
+| `core` / `identity` | **Samba 4 AD** (`core`)<br>**Authentik** (`identity`) | **Core Identity:** AD serves as the "Source of Truth". Authentik syncs via LDAP to provide SSO (SAML/OIDC) and MFA. |
+| `collaboration` | **Zimbra Suite** *(experimental, not deployed)* | **Business Apps:** Email, Calendar, Contacts. Manifest in `kubernetes/experimental/`; no trusted container image yet. |
 | `security` | **Wazuh Manager** | **Defensive Ops:** Central SIEM for log correlation. |
 | `monitoring` | **Prometheus**<br>**Grafana** | **Observability:** Scrapes metrics from nodes/pods and visualizes them via accessible dashboards (e.g., `grafana.sovereign.lan`). |
 

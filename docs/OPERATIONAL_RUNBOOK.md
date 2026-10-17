@@ -52,6 +52,11 @@ Day-2 guidance for running the Ubuntu Sovereign Stack: routine checks, scaling, 
 - Rotate ingress TLS secrets before expiry; prefer cert-manager issuers
 - Rotate database and service credentials quarterly; restart dependent pods
 - Never commit secrets to Git; use Kubernetes Secrets or external secret stores; encrypt at rest
+- Regenerate the Kubernetes Secrets with `scripts/bootstrap-secrets.sh --rotate`, then:
+  - **Grafana**: `kubectl -n monitoring rollout restart deploy/grafana`. The env var only seeds the first start; on an existing database also run `grafana cli admin reset-admin-password` inside the pod.
+  - **Authentik PostgreSQL**: change the role password first (`ALTER USER authentik PASSWORD '...'` in `authentik-postgres-0`), then restart `authentik-server`/`authentik-worker`. Rotating `authentik-secret-key` invalidates sessions.
+  - **Samba AD**: change the Administrator password with `samba-tool user setpassword Administrator` in `samba-ad-0`.
+  - **MinIO/Velero**: both secrets are rotated together; restart `minio` and Velero (`kubectl -n velero rollout restart deploy/velero`).
 
 ## Logging & Monitoring
 - Prometheus targets healthy: `curl http://<prom>:9090/api/v1/targets`

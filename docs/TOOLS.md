@@ -6,10 +6,10 @@
 | --- | --- | --- |
 | Operating System | Ubuntu Server LTS | 5y security updates, broad ecosystem, HWE kernel support. |
 | Orchestration | Kubernetes (RKE2) + Rancher | FIPS-capable distro; Rancher for UI, RBAC, upgrades, multi-cluster. |
-| Container Runtime | Podman | Daemonless/rootless; Docker explicitly excluded to reduce attack surface. |
+| Container Runtime | containerd (bundled with RKE2) · Podman on admin/build hosts | Kubernetes workloads run on RKE2's containerd. Podman (daemonless/rootless) builds images and runs local containers; no Docker daemon. |
 | Identity | Samba 4 AD | AD-compatible source of truth; avoids CAL licensing. |
 | SSO / MFA | Authentik | OIDC/SAML with WebAuthn/TOTP; bridges legacy LDAP/AD. |
-| Collaboration | Zimbra CE + ClamAV + SpamAssassin | Exchange/O365 alternative with built-in AV/AS. |
+| Collaboration | Zimbra CE + ClamAV + SpamAssassin *(experimental)* | Exchange/O365 alternative with built-in AV/AS. No trusted container image yet; not in the supported deployment flow. |
 | SIEM / XDR | Wazuh | Centralized detection/response, log correlation for OS/K8s/apps. |
 | Metrics / Viz | Prometheus + Grafana | De facto standard for metrics and dashboards. |
 | Storage (CSI) | Longhorn | Distributed block storage; CSI snapshots for PVCs. |

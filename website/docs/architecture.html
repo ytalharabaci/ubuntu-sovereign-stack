@@ -53,7 +53,7 @@
 <ul>
 <li>  <strong>RKE2</strong>: Used for its FIPS compliance and secure-by-default configuration.</li>
 <li>  <strong>Rancher:</strong> Provides the "Single Pane of Glass" for lifecycle management, RBAC, and workload visibility.</li>
-<li>  <strong>Runtime:</strong> <strong>Podman</strong> is mandated as the container engine (Daemonless/Rootless) to mitigate security risks associated with the Docker daemon.</li>
+<li>  <strong>Runtime:</strong> Kubernetes workloads run on <strong>containerd</strong>, bundled and managed by RKE2. <strong>Podman</strong> (daemonless/rootless) is used on admin and build hosts for image builds and local containers; it is not the Kubernetes runtime. The Docker daemon is not used.</li>
 </ul>
 <h2>Logical Architecture &amp; Namespaces</h2>
 <p>Services are logically isolated into Kubernetes Namespaces for security and resource management:</p>

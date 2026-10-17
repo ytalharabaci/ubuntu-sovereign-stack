@@ -1,7 +1,7 @@
 # Documentation Index
 
 ## Abstract
-Enterprise workloads are increasingly bound to hyperscale clouds and their extraterritorial control planes (e.g., CLOUD Act). The Ubuntu Sovereign Stack provides an on-prem, open-source reference architecture that keeps identity, collaboration, and observability fully under organizational custody. It uses Ubuntu Server LTS + Kubernetes (RKE2) managed by Rancher, Podman as a daemonless runtime, Samba 4 + Authentik for identity, Zimbra for mail, and Wazuh/Prometheus/Grafana for security and metrics. Persistent storage (Longhorn), networking (MetalLB), PKI (Cert-Manager), and backups (Velero + MinIO) complete the platform. Client flexibility is preserved via ten Ubuntu-based desktops tuned to user personas.
+Enterprise workloads are increasingly bound to hyperscale clouds and their extraterritorial control planes (e.g., CLOUD Act). The Ubuntu Sovereign Stack provides an on-prem, open-source reference architecture that keeps identity, collaboration, and observability fully under organizational custody. It uses Ubuntu Server LTS + Kubernetes (RKE2, containerd runtime) managed by Rancher, Podman for daemonless image builds on admin hosts, Samba 4 + Authentik for identity, Zimbra for mail (experimental), and Wazuh/Prometheus/Grafana for security and metrics. Persistent storage (Longhorn), networking (MetalLB), PKI (Cert-Manager), and backups (Velero + MinIO) complete the platform. Client flexibility is preserved via ten Ubuntu-based desktops tuned to user personas.
 
 ## Core Strategy Documents
 * **[Strategic Implementation Plan](PROJECT_PROPOSAL.md):** Complete vision, architecture, client strategy, WBS, risk management, deliverables, and success criteria.
@@ -19,4 +19,4 @@ Enterprise workloads are increasingly bound to hyperscale clouds and their extra
 
 ## Technical Architecture
 * **[System Architecture](ARCHITECTURE.md):** Topology, cluster design, storage, networking.
-* **[Tools & Components](TOOLS.md):** Rationale for Podman, RKE2, Authentik, Longhorn, MetalLB, Velero; includes "Flexible 10" client strategy.
+* **[Tools & Components](TOOLS.md):** Rationale for RKE2/containerd, Podman, Authentik, Longhorn, MetalLB, Velero; includes "Flexible 10" client strategy.

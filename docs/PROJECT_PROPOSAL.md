@@ -37,7 +37,7 @@ This trend renders on-premise, open-source alternatives strategic for organizati
 ## 4. Scope and System Architecture
 *   **Server Side:** 1× control plane + 2× worker (Ubuntu Server LTS) running RKE2; Rancher for lifecycle, RBAC, and observability. Helm/manifests; CI/CD-ready.
     *   *See [System Architecture](ARCHITECTURE.md) for detailed node and network topology.*
-*   **Runtime:** Podman-only policy (daemonless/rootless); Docker explicitly excluded.
+*   **Runtime:** containerd (bundled with RKE2) for Kubernetes workloads; Podman (daemonless/rootless) for image builds and local containers on admin hosts; no Docker daemon.
 *   **Storage/Network/PKI:** Longhorn (CSI) for PVCs; MetalLB (L2) for service IPs; Cert-Manager for internal PKI.
 *   **Backup:** Velero + MinIO (S3-compatible) for cluster and volume protection; CSI/kopia snapshots; periodic recovery drills.
 *   **Client Side:** Ubuntu LTS derivatives (Linux Mint, Zorin OS, etc.) selected based on user experience and deployed via phased pilots.
@@ -88,7 +88,7 @@ Persona-based desktop catalog to reduce migration friction: Ubuntu Desktop (base
 ### Phase 1: Foundation & Requirements (Month 1-2)
 * **Hardware Sourcing:** Procure 3× servers (CPU, RAM, SSD, NIC specs).
 * **Network Topology Design:** Segment networks, plan firewall rules, DNS split-view.
-* **Ansible Scaffolding:** Baseline OS deployment scripts (Ubuntu LTS, kernel tuning, Podman).
+* **Ansible Scaffolding:** Baseline OS deployment scripts (Ubuntu LTS, kernel tuning, Longhorn prerequisites).
 * **Output:** Cluster Bootstrapped; RKE2 cluster running.
 * **Milestone:** All 3 nodes running RKE2, Rancher UI accessible.
 
@@ -147,7 +147,7 @@ Persona-based desktop catalog to reduce migration friction: Ubuntu Desktop (base
   * Network topology diagram (physical + logical).
 * **Operational Runbooks:**
   * Cluster scaling (add/remove worker nodes).
-  * Service patching (RKE2, Podman, app updates).
+  * Service patching (RKE2, OS packages, app updates).
   * Backup/restore procedures (Velero recovery drills).
   * Incident response (e.g., "Pod CrashLoopBackOff", "Samba replication lag").
 * **Architecture Document** (System Architecture + this Strategic Implementation Plan).
@@ -199,7 +199,7 @@ Persona-based desktop catalog to reduce migration friction and support burden. D
 ## 12. Operating Model: IaC + GUI
 
 ### Infrastructure as Code (Ansible)
-* **Provisioning:** Ansible playbooks for baseline OS deployment, Podman runtime, kernel tuning.
+* **Provisioning:** Ansible playbooks for baseline OS deployment, RKE2 server/agent roles, kernel tuning.
 * **Scaling:** Add worker nodes via Ansible; regenerate kubeconfig; verify node joins cluster.
 * **Patching:** Rolling OS/RKE2 updates orchestrated via Ansible + Rancher (minimal downtime).
 * **Reproducibility:** Full stack rebuild from bare metal in <2 hours using Ansible + Velero restore.
