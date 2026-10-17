@@ -1,26 +1,20 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: longhorn-system
----
-# Note: In a real deployment, we would use the Helm Chart.
-# This is a placeholder manifest to indicate the architecture.
-# Longhorn provides distributed block storage for the cluster.
-# Install via Helm before applying workloads:
-# helm repo add longhorn https://charts.longhorn.io
-# helm install longhorn longhorn/longhorn --namespace longhorn-system --create-namespace
+# Longhorn is installed with Helm: infrastructure/install-longhorn.sh
+# The chart creates the `longhorn-system` namespace and the default `longhorn`
+# StorageClass (3 replicas by default). Tune it through Helm values instead of
+# applying a second StorageClass here, e.g.:
+#   infrastructure/install-longhorn.sh --set persistence.defaultClassReplicaCount=1   # single-node lab
+#   infrastructure/install-longhorn.sh --set persistence.reclaimPolicy=Retain
+#
+# Optional: a Retain StorageClass for data you never want deleted with its PVC.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: longhorn
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
+  name: longhorn-retain
 provisioner: driver.longhorn.io
 allowVolumeExpansion: true
-reclaimPolicy: Delete
+reclaimPolicy: Retain
 volumeBindingMode: Immediate
 parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "2880"
-  fromBackup: ""
   fsType: "ext4"
