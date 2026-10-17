@@ -1,0 +1,113 @@
+# Static validation and security checks for every change.
+# Third-party actions are pinned by commit SHA (tags can be moved).
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUBECONFORM_VERSION: "0.8.0"
+  GITLEAKS_VERSION: "8.30.1"
+  TRIVY_VERSION: "v0.76.0"
+  K8S_SCHEMA_VERSION: "1.35.0"
+
+jobs:
+  yamllint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install yamllint
+        run: pip install --user yamllint==1.38.0
+      - name: Lint YAML
+        run: yamllint --strict .
+
+  ansible-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run ansible-lint
+        uses: ansible/ansible-lint@9bce2bfb8f4a984e6b13767bc0d6bf0a49492164 # v26.10.1
+        with:
+          working_directory: infrastructure
+          args: setup-rke2.yml
+      - name: Playbook syntax check
+        run: |
+          pipx install ansible-core
+          ansible-playbook --syntax-check -i infrastructure/hosts.ini infrastructure/setup-rke2.yml
+
+  kubeconform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install kubeconform
+        run: |
+          curl -sSLo kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf kubeconform.tar.gz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+      - name: Validate Kubernetes manifests
+        # CRDs (cert-manager, MetalLB, Velero, snapshot) are validated against
+        # the datree CRDs-catalog.
+        run: |
+          kubeconform -strict -summary \
+            -kubernetes-version "${K8S_SCHEMA_VERSION}" \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            kubernetes/
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: ShellCheck
+        run: shellcheck --version && shellcheck infrastructure/*.sh scripts/*.sh
+
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate compose files against .env.example
+        run: |
+          docker compose -f small-scale/docker-compose.yml --env-file small-scale/.env.example config -q
+          docker compose -f small-scale/docker-compose.aio.yml --env-file small-scale/.env.example config -q
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install gitleaks
+        run: |
+          curl -sSLo gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+      - name: Scan working tree for secrets
+        # Scans the current tree. Demo credentials removed in this history are
+        # documented as invalid in SECURITY.md.
+        run: gitleaks dir . --config .gitleaks.toml --redact --verbose --exit-code 1
+
+  trivy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Trivy IaC misconfiguration scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+          skip-dirs: website,small-scale/mailcow,kubernetes/experimental

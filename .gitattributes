@@ -1,0 +1,7 @@
+# Keep shell scripts, Ansible templates and env files LF on every platform so
+# they run unchanged on Linux nodes even when checked out on Windows.
+*.sh      text eol=lf
+*.j2      text eol=lf
+*.env.example text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf

@@ -36,7 +36,7 @@ Every push and pull request to `main` runs `.github/workflows/ci.yml`:
 | Check | Tool | Fails on |
 | --- | --- | --- |
 | Secret scanning (working tree) | gitleaks | any detected secret |
-| IaC misconfiguration | Trivy (`config`) | HIGH / CRITICAL findings not justified in `.trivyignore` |
+| IaC misconfiguration | Trivy (`config`) | HIGH / CRITICAL findings not justified in `.trivyignore.yaml` |
 | Kubernetes schema | kubeconform (strict, incl. CRDs) | invalid manifests |
 | Ansible | ansible-lint (production profile) + syntax check | lint errors |
 | Shell | ShellCheck | warnings |
