@@ -448,7 +448,7 @@ kubectl logs -f deployment/rancher -n cattle-system
 ## Next Steps
 
 1. **Day 2 Operations:** See [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) for post-installation validation.
-2. **Client Provisioning:** Follow [CLIENT_STRATEGY.md](CLIENT_STRATEGY.md) to deploy the "Flexible 10" desktops.
+2. **Client Provisioning:** See the client model in [TOOLS.md](TOOLS.md#client-stack-the-flexible-10-model) to deploy the "Flexible 10" desktops.
 3. **Operational Runbooks:** Reference individual service documentation in `/docs/`.
 
 ---

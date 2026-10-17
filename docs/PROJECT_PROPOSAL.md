@@ -41,7 +41,7 @@ This trend renders on-premise, open-source alternatives strategic for organizati
 *   **Storage/Network/PKI:** Longhorn (CSI) for PVCs; MetalLB (L2) for service IPs; Cert-Manager for internal PKI.
 *   **Backup:** Velero + MinIO (S3-compatible) for cluster and volume protection; CSI/kopia snapshots; periodic recovery drills.
 *   **Client Side:** Ubuntu LTS derivatives (Linux Mint, Zorin OS, etc.) selected based on user experience and deployed via phased pilots.
-    *   *See [Client Strategy](CLIENT_STRATEGY.md) for the "Flexible 10" model.*
+    *   *See [Tools & Components](TOOLS.md#client-stack-the-flexible-10-model) for the "Flexible 10" model.*
 *   **Network Security:** Physical firewall; segmentation/VPN; IDS/IPS options.
 
 ### 4.1 Open Source Components
@@ -64,12 +64,10 @@ This trend renders on-premise, open-source alternatives strategic for organizati
 | **IaC** | Ansible | Infrastructure as Code, reproducible & portable setups. |
 
 ### 4.2 Methodology & Project Management
-The project follows a strict DevOps and Project Management framework to ensure reproducibility and timely delivery.
-*   *See [Methodology & Metrics](METHODOLOGY.md) for the evaluation framework (TCO, Security Tests).*
-*   *See [Project Management](PROJECT_MANAGEMENT.md) for the timeline, WBS, and risk registry.*
+The project follows a DevOps and Project Management framework to ensure reproducibility and timely delivery. Verification evidence and known limitations are tracked in [TEST_RESULTS.md](TEST_RESULTS.md).
 
 ## 5. Client Strategy (“Flexible 10”)
-Persona-based desktop catalog to reduce migration friction: Ubuntu Desktop (baseline), Linux Mint/Zorin (Windows converts), Pop!_OS (engineers), Kubuntu (power users), Xubuntu/Lubuntu (legacy/thin), Ubuntu MATE (traditional), elementary OS (kiosk/public), KDE Neon (R&D). (*See* [Client Strategy](CLIENT_STRATEGY.md) for full grid and rollout.)
+Persona-based desktop catalog to reduce migration friction: Ubuntu Desktop (baseline), Linux Mint/Zorin (Windows converts), Pop!_OS (engineers), Kubuntu (power users), Xubuntu/Lubuntu (legacy/thin), Ubuntu MATE (traditional), elementary OS (kiosk/public), KDE Neon (R&D). (*See* [Tools & Components](TOOLS.md#client-stack-the-flexible-10-model) for full grid and rollout.)
 
 ## 6. Operating Model (IaC + GUI)
 * Provisioning/rebuilds via Ansible (repeatable, testable).
@@ -178,7 +176,7 @@ Persona-based desktop catalog to reduce migration friction: Ubuntu Desktop (base
 
 ## 11. Client Strategy: The "Flexible 10" Model
 
-Persona-based desktop catalog to reduce migration friction and support burden. Details in [CLIENT_STRATEGY.md](CLIENT_STRATEGY.md); summary:
+Persona-based desktop catalog to reduce migration friction and support burden. Details in [TOOLS.md](TOOLS.md#client-stack-the-flexible-10-model); summary:
 
 | # | Distro | Persona | Rationale |
 | --- | --- | --- | --- |

@@ -4,7 +4,7 @@ This file records **evidence**, not intentions. An entry moves to *Verified*
 only with the environment, date, commands and outcome written down. Anything
 not listed as verified should be treated as untested.
 
-_Last updated: 2026-10-17_
+_Last updated: 2026-10-17 (final; the project is archived and no end-to-end run is planned)_
 
 ## Static validation (CI)
 

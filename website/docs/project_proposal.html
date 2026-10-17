@@ -36,7 +36,7 @@
 
         <div class="container">
                 <div class="docs-content">
-                        <a href="index.html" class="nav-link" style="display:inline-block; margin-bottom:1rem; color:var(--primary); padding:0;">&larr; Back to Index</a>
+                        <a href="../index.html" class="nav-link" style="display:inline-block; margin-bottom:1rem; color:var(--primary); padding:0;">&larr; Back to Index</a>
                         <h1>Project Proposal: Ubuntu-Based Open-Source Sovereign Enterprise Architecture</h1>
                         <blockquote>
                             <ul>
@@ -81,7 +81,7 @@
                             <li><strong>Runtime:</strong> Podman-only (daemonless/rootless); Docker explicitly excluded.</li>
                             <li><strong>Storage/Network/PKI:</strong> Longhorn (CSI) for PVCs; MetalLB (L2) for service IPs; Cert-Manager for internal PKI.</li>
                             <li><strong>Backup:</strong> Velero + MinIO (S3-compatible) for cluster and volume protection; CSI/kopia snapshots; periodic recovery drills.</li>
-                            <li><strong>Client Side:</strong> Ubuntu LTS derivatives (Linux Mint, Zorin OS, etc.) via phased pilots. <em>See <a href="client_strategy.html">Client Strategy</a> for the “Flexible 10”.</em></li>
+                            <li><strong>Client Side:</strong> Ubuntu LTS derivatives (Linux Mint, Zorin OS, etc.) via phased pilots. <em>See <a href="tools.html">Client Strategy</a> for the “Flexible 10”.</em></li>
                             <li><strong>Network Security:</strong> Physical firewall; segmentation/VPN; IDS/IPS options.</li>
                         </ul>
 
@@ -106,14 +106,10 @@
                         </table>
 
                         <h3>4.2 Methodology &amp; Project Management</h3>
-                        <p>The project follows a strict DevOps and PM framework to ensure reproducibility and timely delivery.</p>
-                        <ul>
-                            <li><em>See <a href="methodology.html">Methodology &amp; Metrics</a> for the evaluation framework (TCO, Security Tests).</em></li>
-                            <li><em>See <a href="project_management.html">Project Management</a> for the timeline, WBS, and risk registry.</em></li>
-                        </ul>
+                        <p>The project follows a DevOps and PM framework to ensure reproducibility and timely delivery. Verification evidence and known limitations are tracked in <a href="https://github.com/yusufarbc/ubuntu-sovereign-stack/blob/main/docs/TEST_RESULTS.md">TEST_RESULTS.md</a>.</p>
 
                         <h2>5. Client Strategy (“Flexible 10”)</h2>
-                        <p>Persona-based desktop catalog: Ubuntu Desktop (baseline), Linux Mint/Zorin (Windows converts), Pop!_OS (engineers), Kubuntu (power users), Xubuntu/Lubuntu (legacy/thin), Ubuntu MATE (traditional), elementary OS (kiosk/public), KDE Neon (R&amp;D). <em>See <a href="client_strategy.html">Client Strategy</a> for details.</em></p>
+                        <p>Persona-based desktop catalog: Ubuntu Desktop (baseline), Linux Mint/Zorin (Windows converts), Pop!_OS (engineers), Kubuntu (power users), Xubuntu/Lubuntu (legacy/thin), Ubuntu MATE (traditional), elementary OS (kiosk/public), KDE Neon (R&amp;D). <em>See <a href="tools.html">Client Strategy</a> for details.</em></p>
 
                         <h2>6. Operating Model (IaC + GUI)</h2>
                         <ul>

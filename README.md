@@ -2,7 +2,12 @@
 
 [![CI](https://github.com/yusufarbc/ubuntu-sovereign-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/yusufarbc/ubuntu-sovereign-stack/actions/workflows/ci.yml)
 
-> **Project status: reference architecture / infrastructure-as-code in progress.**
+> **Archived (2026-10-17).** This project is no longer maintained. Issues and
+> pull requests are closed. Pinned component versions were current as of
+> October 2026 and will not receive security updates; review and update every
+> version before reusing any part of this repository.
+
+> **Project status: reference architecture / infrastructure-as-code.**
 > Manifests, playbooks and scripts are statically validated in CI (YAML lint,
 > ansible-lint, Kubernetes schema validation, ShellCheck, secret scanning, Trivy
 > IaC scan). They have **not** yet been verified end-to-end on a live cluster and

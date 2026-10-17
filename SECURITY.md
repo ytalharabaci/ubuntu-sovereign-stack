@@ -2,21 +2,16 @@
 
 ## Supported versions
 
-This is a reference architecture under active development. Only the `main`
-branch is maintained; there are no released versions yet. Component versions
-are pinned in the manifests, Helm install scripts and `infrastructure/group_vars/`.
+**None.** The repository was archived on 2026-10-17 and is no longer
+maintained. No security fixes will be made, and pinned component versions will
+not be updated. Treat everything here as reference material: review and update
+all versions and configurations before reusing any part of it.
 
 ## Reporting a vulnerability
 
-Please **do not** open a public issue for security problems.
-
-Report privately through GitHub:
-**Security → Advisories → Report a vulnerability**
-(<https://github.com/yusufarbc/ubuntu-sovereign-stack/security/advisories/new>).
-
-Include the affected file(s), impact and reproduction steps. You can expect an
-acknowledgement within 7 days. Fixes are coordinated in a private advisory and
-disclosed once a fix is on `main`.
+The repository is archived, so no fixes will be published. If you find an issue
+that also affects an upstream component (RKE2, Authentik, Longhorn, Velero,
+etc.), report it to that project directly.
 
 ## Secret handling
 
