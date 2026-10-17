@@ -1,0 +1,13 @@
+# Managed by Ansible (setup-rke2.yml). Do not edit by hand.
+{% if rke2_join | bool %}
+server: https://{{ rke2_api_endpoint }}:9345
+token: {{ rke2_token }}
+{% endif %}
+{% if (rke2_role | default('server')) == 'server' %}
+write-kubeconfig-mode: "0600"
+tls-san:
+  - {{ rke2_api_endpoint }}
+{% for san in (rke2_tls_san | default('')).split(',') if san | trim %}
+  - {{ san | trim }}
+{% endfor %}
+{% endif %}

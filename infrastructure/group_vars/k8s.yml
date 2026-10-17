@@ -1,0 +1,4 @@
+---
+# Pinned RKE2 release. Check https://github.com/rancher/rke2/releases and the
+# Rancher support matrix before bumping. v1.35 is supported by Rancher v2.15.
+rke2_version: "v1.35.9+rke2r1"
