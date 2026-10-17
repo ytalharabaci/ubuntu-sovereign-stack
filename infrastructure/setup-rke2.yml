@@ -1,60 +1,198 @@
 ---
-- name: Setup RKE2 on Ubuntu LTS nodes
-  hosts: all
-  become: true
-  vars:
-    rke2_version: "v1.28.10+rke2r1"
+# Provision RKE2 on Ubuntu Server LTS.
+#
+#   ansible-playbook -i hosts.ini setup-rke2.yml
+#
+# Topology (see hosts.ini):
+#   rke2_servers[0]   bootstraps the cluster and publishes the join token
+#   rke2_servers[1:]  join as additional control-plane/etcd servers (one at a time)
+#   rke2_agents       join as workers
+#
+# RKE2 ships its own container runtime (containerd). Podman is NOT required on
+# cluster nodes.
 
+- name: Prepare Ubuntu nodes
+  hosts: k8s
+  become: true
   tasks:
     - name: Update apt cache and upgrade packages
-      apt:
-        update_cache: yes
+      ansible.builtin.apt:
+        update_cache: true
         upgrade: dist
+        cache_valid_time: 3600
 
-    - name: Install dependencies
-      apt:
+    - name: Install base dependencies
+      ansible.builtin.apt:
         name:
           - curl
-          - software-properties-common
+          - ca-certificates
           - fail2ban
+          - open-iscsi   # Longhorn
+          - nfs-common   # Longhorn RWX volumes
         state: present
 
-    - name: Install Podman (daemonless runtime)
-      apt:
-        name: podman
-        state: present
+    - name: Enable iscsid for Longhorn
+      ansible.builtin.systemd:
+        name: iscsid
+        state: started
+        enabled: true
+
+    - name: Disable swap for the running system
+      ansible.builtin.command: swapoff -a
+      when: ansible_swaptotal_mb | int > 0
+      changed_when: true
+
+    - name: Disable swap in fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s+.*)$'
+        replace: '# \1'
+
+    - name: Create RKE2 config directory
+      ansible.builtin.file:
+        path: /etc/rancher/rke2
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
 
     - name: Download RKE2 install script
-      get_url:
+      ansible.builtin.get_url:
         url: https://get.rke2.io
-        dest: /tmp/install_rke2.sh
-        mode: '0700'
+        dest: /usr/local/sbin/install_rke2.sh
+        owner: root
+        group: root
+        mode: "0700"
+
+- name: Bootstrap first RKE2 server
+  hosts: rke2_servers[0]
+  become: true
+  tasks:
+    - name: Write RKE2 server config
+      ansible.builtin.template:
+        src: templates/rke2-config.yaml.j2
+        dest: /etc/rancher/rke2/config.yaml
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        rke2_join: false
 
     - name: Install RKE2 server
-      shell: INSTALL_RKE2_VERSION={{ rke2_version }} sh /tmp/install_rke2.sh
+      ansible.builtin.command: /usr/local/sbin/install_rke2.sh
+      args:
+        creates: /usr/local/bin/rke2
       environment:
+        INSTALL_RKE2_VERSION: "{{ rke2_version }}"
         INSTALL_RKE2_TYPE: server
 
-    - name: Enable and start RKE2 server
-      systemd:
+    - name: Enable and start rke2-server
+      ansible.builtin.systemd:
         name: rke2-server
         state: started
-        enabled: yes
+        enabled: true
 
+    - name: Wait for the node token
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/rke2/server/node-token
+        timeout: 600
+
+    - name: Read the node token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/rke2/server/node-token
+      register: rke2_node_token_raw
+      no_log: true
+
+    - name: Publish the token to other hosts
+      ansible.builtin.set_fact:
+        rke2_token: "{{ rke2_node_token_raw.content | b64decode | trim }}"
+        cacheable: false
+      no_log: true
+
+- name: Join additional RKE2 servers
+  hosts: rke2_servers[1:]
+  become: true
+  serial: 1
+  vars:
+    rke2_token: "{{ hostvars[groups['rke2_servers'][0]]['rke2_token'] }}"
+  tasks:
+    - name: Write RKE2 server config
+      ansible.builtin.template:
+        src: templates/rke2-config.yaml.j2
+        dest: /etc/rancher/rke2/config.yaml
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        rke2_join: true
+      no_log: true
+
+    - name: Install RKE2 server
+      ansible.builtin.command: /usr/local/sbin/install_rke2.sh
+      args:
+        creates: /usr/local/bin/rke2
+      environment:
+        INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+        INSTALL_RKE2_TYPE: server
+
+    - name: Enable and start rke2-server
+      ansible.builtin.systemd:
+        name: rke2-server
+        state: started
+        enabled: true
+
+- name: Join RKE2 agents
+  hosts: rke2_agents
+  become: true
+  vars:
+    rke2_token: "{{ hostvars[groups['rke2_servers'][0]]['rke2_token'] }}"
+  tasks:
+    - name: Write RKE2 agent config
+      ansible.builtin.template:
+        src: templates/rke2-config.yaml.j2
+        dest: /etc/rancher/rke2/config.yaml
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        rke2_join: true
+        rke2_role: agent
+      no_log: true
+
+    - name: Install RKE2 agent
+      ansible.builtin.command: /usr/local/sbin/install_rke2.sh
+      args:
+        creates: /usr/local/bin/rke2
+      environment:
+        INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+        INSTALL_RKE2_TYPE: agent
+
+    - name: Enable and start rke2-agent
+      ansible.builtin.systemd:
+        name: rke2-agent
+        state: started
+        enabled: true
+
+- name: Server tooling
+  hosts: rke2_servers
+  become: true
+  tasks:
     - name: Add RKE2 bin to PATH
-      lineinfile:
-        path: /etc/profile.d/rke2.sh
-        line: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
-        create: yes
+      ansible.builtin.copy:
+        dest: /etc/profile.d/rke2.sh
+        content: |
+          export PATH=$PATH:/var/lib/rancher/rke2/bin
+          export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+        owner: root
+        group: root
+        mode: "0644"
 
-    - name: Symlink kubectl
-      file:
-        src: /var/lib/rancher/rke2/bin/kubectl
-        dest: /usr/local/bin/kubectl
+    - name: Symlink kubectl and crictl
+      ansible.builtin.file:
+        src: "/var/lib/rancher/rke2/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
         state: link
-
-    - name: Symlink crictl
-      file:
-        src: /var/lib/rancher/rke2/bin/crictl
-        dest: /usr/local/bin/crictl
-        state: link
+        force: true
+      loop:
+        - kubectl
+        - crictl
