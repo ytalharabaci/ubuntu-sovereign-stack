@@ -1,3 +1,8 @@
+# MetalLB L2 address pool (metallb.io/v1beta1 CRDs, MetalLB >= 0.13)
+# Install MetalLB first, e.g.:
+#   helm repo add metallb https://metallb.github.io/metallb
+#   helm install metallb metallb/metallb --version 0.16.1 -n metallb-system --create-namespace
+#   kubectl -n metallb-system rollout status deploy/metallb-controller
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,17 +12,20 @@ metadata:
     pod-security.kubernetes.io/audit: privileged
     pod-security.kubernetes.io/warn: privileged
 ---
-apiVersion: v1
-kind: ConfigMap
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
 metadata:
+  name: default
   namespace: metallb-system
-  name: config
-data:
-  config: |
-    # Apply MetalLB core manifests (helm chart or https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml)
-    # before using this address pool.
-    address-pools:
-    - name: default
-      protocol: layer2
-      addresses:
-      - 192.168.1.200-192.168.1.250 # UPDATE THIS RANGE TO MATCH YOUR NETWORK
+spec:
+  addresses:
+    - 192.168.1.200-192.168.1.250  # UPDATE THIS RANGE TO MATCH YOUR NETWORK
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - default

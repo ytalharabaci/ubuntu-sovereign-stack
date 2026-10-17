@@ -1,3 +1,9 @@
+# Wazuh manager + dashboard (PARTIAL / reference only)
+#
+# This manifest does NOT deploy the Wazuh indexer, TLS certificates or the
+# filebeat pipeline that a working Wazuh installation needs. For a supported
+# deployment use the upstream manifests at github.com/wazuh/wazuh-kubernetes
+# (tag v4.14.9), and keep the image versions below in sync with them.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -9,7 +15,7 @@ metadata:
   name: wazuh-manager
   namespace: security
 spec:
-  serviceName: wazuh-cluster
+  serviceName: wazuh-manager
   replicas: 1
   selector:
     matchLabels:
@@ -21,7 +27,11 @@ spec:
     spec:
       containers:
         - name: wazuh-manager
-          image: wazuh/wazuh-manager:4.7.0
+          image: wazuh/wazuh-manager:4.14.9
+          # The manager image runs its own init system as root (s6) and cannot
+          # run as non-root; privilege escalation is still blocked.
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - containerPort: 1514
               name: agents-tcp
@@ -30,13 +40,33 @@ spec:
             - containerPort: 55000
               name: api
           env:
-            - name: ELASTICSEARCH_URL
-              value: "http://elasticsearch:9200" # Requires External ES or Sidecar
+            - name: INDEXER_URL
+              value: "https://wazuh-indexer.security.svc:9200"  # not deployed by this file
+          readinessProbe:
+            tcpSocket:
+              port: 55000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          livenessProbe:
+            tcpSocket:
+              port: 1514
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: wazuh-data
+              mountPath: /var/ossec/logs
   volumeClaimTemplates:
     - metadata:
         name: wazuh-data
       spec:
-        accessModes: [ "ReadWriteOnce" ]
+        accessModes: ["ReadWriteOnce"]
         resources:
           requests:
             storage: 10Gi
@@ -59,7 +89,6 @@ spec:
       name: api
   selector:
     app: wazuh-manager
-
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -78,13 +107,29 @@ spec:
     spec:
       containers:
         - name: wazuh-dashboard
-          image: wazuh/wazuh-dashboard:4.7.0
+          image: wazuh/wazuh-dashboard:4.14.9
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - containerPort: 5601
               name: dashboard
           env:
             - name: WAZUH_API_URL
-              value: "https://wazuh-manager:55000"
+              value: "https://wazuh-manager"
+            - name: INDEXER_URL
+              value: "https://wazuh-indexer.security.svc:9200"  # not deployed by this file
+          readinessProbe:
+            tcpSocket:
+              port: 5601
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
 ---
 apiVersion: v1
 kind: Service
@@ -92,7 +137,8 @@ metadata:
   name: wazuh-dashboard
   namespace: security
 spec:
-  type: NodePort
+  # ClusterIP by default; expose through an Ingress with TLS (cert-manager).
+  type: ClusterIP
   ports:
     - port: 443
       targetPort: 5601

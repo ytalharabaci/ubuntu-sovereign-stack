@@ -1,3 +1,11 @@
+# =====================================================================
+# EXPERIMENTAL / UNSUPPORTED - NOT PART OF THE SUPPORTED DEPLOYMENT FLOW
+# =====================================================================
+# Zimbra has no official, maintained container image. The image below is a
+# placeholder and has not been verified. Do not deploy this to production.
+# Build and verify your own image, pin it by version/digest, and document its
+# source, licence and update process before promoting it out of experimental/.
+# For a containerised mail stack, see small-scale/mailcow/ (also unverified on K8s).
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -23,11 +31,8 @@ spec:
     spec:
       containers:
         - name: zimbra
-          # Note: Zimbra does not offer an official "cloud-native" container. 
-          # This uses a popular community alternative or implies a custom build.
-          # For Thesis: We assume a containerized build of Zimbra OSE with ClamAV & SpamAssassin included.
-          # WARNING: This image is a placeholder. You must build your own or use a trusted community image.
-          image: zimbramail/zimbra-ose:latest 
+          # PLACEHOLDER: replace with a self-built, version-pinned image.
+          image: registry.example.invalid/zimbra-ose:CHANGE_ME
           ports:
             - containerPort: 25
               name: smtp
@@ -59,7 +64,7 @@ spec:
     - metadata:
         name: zimbra-data
       spec:
-        accessModes: [ "ReadWriteOnce" ]
+        accessModes: ["ReadWriteOnce"]
         resources:
           requests:
             storage: 50Gi
