@@ -1,0 +1,253 @@
+# Single-VPS business stack: web site, mail, files/office, password vault,
+# uptime monitoring and container management behind Caddy (automatic HTTPS).
+# Requires a populated .env (see .env.example) and the Caddyfile next to this
+# file. Image tags are pinned; review upstream release notes before bumping.
+# Nextcloud cannot skip major versions: upgrade one major at a time.
+
+name: sovereign-vps
+
+services:
+  # =========================================================
+  # 1. REVERSE PROXY & AUTOMATIC TLS: CADDY
+  # =========================================================
+  caddy:
+    image: caddy:2.11.7-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"          # HTTP (ACME challenges, redirect to HTTPS)
+      - "443:443"        # HTTPS
+      - "443:443/udp"    # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?set in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+    networks:
+      - edge
+
+  # =========================================================
+  # 2. MAIL: POSTE.IO (SMTP/IMAP + WEBMAIL + ANTISPAM)
+  # =========================================================
+  mailserver:
+    image: analogic/poste.io:2.5.17
+    container_name: mailserver
+    hostname: mail.${DOMAIN}
+    restart: unless-stopped
+    # Docker publishes ports past UFW, so only the ports meant to be public
+    # are mapped. Plain POP3/IMAP (110/143) and POP3S (995) are not exposed.
+    ports:
+      - "25:25"          # SMTP (server-to-server)
+      - "465:465"        # SMTPS (client submission, implicit TLS)
+      - "587:587"        # Submission (STARTTLS)
+      - "993:993"        # IMAPS
+      - "4190:4190"      # ManageSieve
+    environment:
+      TZ: ${TZ}
+      HTTPS: "OFF"                # TLS for the web UI is terminated by Caddy
+      DISABLE_CLAMAV: "FALSE"     # "TRUE" saves ~1.2 GB RAM on hosts with <= 4 GB
+      DISABLE_RSPAMD: "FALSE"
+      DISABLE_ROUNDCUBE: "FALSE"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./data/mail:/data
+    networks:
+      - edge
+
+  # =========================================================
+  # 3. FILES, CALENDAR, CONTACTS: NEXTCLOUD (+ POSTGRESQL, REDIS)
+  # =========================================================
+  nextcloud-db:
+    image: postgres:16.15-alpine
+    container_name: nextcloud-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${NC_DB_NAME}
+      POSTGRES_USER: ${NC_DB_USER}
+      POSTGRES_PASSWORD: ${NC_DB_PASSWORD:?set in .env}
+      TZ: ${TZ}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./data/nextcloud/db:/var/lib/postgresql/data
+    networks:
+      - nextcloud_backend
+
+  nextcloud-redis:
+    image: redis:7.4.11-alpine
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:?set in .env}
+    volumes:
+      - ./data/nextcloud/redis:/data
+    networks:
+      - nextcloud_backend
+
+  nextcloud:
+    image: nextcloud:34.0.5-apache
+    container_name: nextcloud
+    restart: unless-stopped
+    depends_on:
+      nextcloud-db:
+        condition: service_healthy
+      nextcloud-redis:
+        condition: service_started
+    environment:
+      TZ: ${TZ}
+      POSTGRES_HOST: nextcloud-db
+      POSTGRES_DB: ${NC_DB_NAME}
+      POSTGRES_USER: ${NC_DB_USER}
+      POSTGRES_PASSWORD: ${NC_DB_PASSWORD:?set in .env}
+      REDIS_HOST: nextcloud-redis
+      REDIS_HOST_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+      NEXTCLOUD_ADMIN_USER: ${NC_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NC_ADMIN_PASSWORD:?set in .env}
+      NEXTCLOUD_TRUSTED_DOMAINS: cloud.${DOMAIN}
+      OVERWRITEHOST: cloud.${DOMAIN}
+      OVERWRITEPROTOCOL: https
+      TRUSTED_PROXIES: 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
+      PHP_MEMORY_LIMIT: 1024M
+      PHP_UPLOAD_LIMIT: 10G
+    volumes:
+      - ./data/nextcloud/html:/var/www/html
+    networks:
+      - edge
+      - nextcloud_backend
+
+  nextcloud-cron:
+    image: nextcloud:34.0.5-apache
+    container_name: nextcloud-cron
+    restart: unless-stopped
+    depends_on:
+      - nextcloud
+    entrypoint: /cron.sh
+    volumes:
+      - ./data/nextcloud/html:/var/www/html
+    networks:
+      - edge
+      - nextcloud_backend
+
+  # =========================================================
+  # 4. DOCUMENT EDITING: ONLYOFFICE DOCUMENT SERVER
+  # =========================================================
+  onlyoffice:
+    image: onlyoffice/documentserver:10.0.0
+    container_name: onlyoffice
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:?set in .env}
+      JWT_HEADER: Authorization
+      JWT_IN_BODY: "true"
+    volumes:
+      - ./data/onlyoffice/logs:/var/log/onlyoffice
+      - ./data/onlyoffice/data:/var/www/onlyoffice/Data
+      - ./data/onlyoffice/lib:/var/lib/onlyoffice
+      - ./data/onlyoffice/db:/var/lib/postgresql
+    networks:
+      - edge
+
+  # =========================================================
+  # 5. WEB SITE: WORDPRESS (+ MARIADB)
+  # =========================================================
+  website-db:
+    image: mariadb:11.8.9
+    container_name: website-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${WP_DB_ROOT_PASSWORD:?set in .env}
+      MARIADB_DATABASE: ${WP_DB_NAME}
+      MARIADB_USER: ${WP_DB_USER}
+      MARIADB_PASSWORD: ${WP_DB_PASSWORD:?set in .env}
+      TZ: ${TZ}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ./data/website/db:/var/lib/mysql
+    networks:
+      - website_backend
+
+  website:
+    image: wordpress:7.1.3-apache
+    container_name: website
+    restart: unless-stopped
+    depends_on:
+      website-db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: website-db:3306
+      WORDPRESS_DB_USER: ${WP_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD:?set in .env}
+      WORDPRESS_DB_NAME: ${WP_DB_NAME}
+      TZ: ${TZ}
+    volumes:
+      - ./data/website/html:/var/www/html
+    networks:
+      - edge
+      - website_backend
+
+  # =========================================================
+  # 6. PASSWORD VAULT: VAULTWARDEN (BITWARDEN-COMPATIBLE)
+  # =========================================================
+  vaultwarden:
+    image: vaultwarden/server:1.37.4
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      DOMAIN: https://pass.${DOMAIN}
+      SIGNUPS_ALLOWED: ${VW_SIGNUPS_ALLOWED:-false}
+      ADMIN_TOKEN: ${VW_ADMIN_TOKEN:?set in .env}
+    volumes:
+      - ./data/vaultwarden:/data
+    networks:
+      - edge
+
+  # =========================================================
+  # 7. UPTIME MONITORING: UPTIME KUMA
+  # =========================================================
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.5.6
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - ./data/uptime-kuma:/app/data
+    networks:
+      - edge
+
+  # =========================================================
+  # 8. CONTAINER MANAGEMENT: PORTAINER CE
+  # =========================================================
+  # The Docker socket grants root-equivalent control of the host even when
+  # mounted read-only. Set the admin password immediately after first start.
+  portainer:
+    image: portainer/portainer-ce:2.45.2
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data/portainer:/data
+    networks:
+      - edge
+
+networks:
+  edge:
+    driver: bridge
+  nextcloud_backend:
+    driver: bridge
+    internal: true
+  website_backend:
+    driver: bridge
+    internal: true

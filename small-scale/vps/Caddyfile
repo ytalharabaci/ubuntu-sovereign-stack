@@ -1,0 +1,59 @@
+# Caddy obtains and renews Let's Encrypt certificates for every site below and
+# redirects HTTP to HTTPS automatically. DOMAIN and ACME_EMAIL come from .env.
+# Each subdomain needs a DNS A (and AAAA, if used) record pointing at the VPS.
+{
+	email {$ACME_EMAIL}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# Company web site (WordPress)
+{$DOMAIN}, www.{$DOMAIN} {
+	import security_headers
+	reverse_proxy website:80
+}
+
+# Webmail and Poste.io admin
+mail.{$DOMAIN} {
+	import security_headers
+	reverse_proxy mailserver:80
+}
+
+# Nextcloud (files, calendar, contacts)
+cloud.{$DOMAIN} {
+	import security_headers
+	redir /.well-known/carddav /remote.php/dav 301
+	redir /.well-known/caldav /remote.php/dav 301
+	reverse_proxy nextcloud:80
+}
+
+# ONLYOFFICE Document Server (used from inside Nextcloud)
+office.{$DOMAIN} {
+	import security_headers
+	reverse_proxy onlyoffice:80
+}
+
+# Vaultwarden (WebSocket notifications are served on the same port)
+pass.{$DOMAIN} {
+	import security_headers
+	reverse_proxy vaultwarden:80
+}
+
+# Uptime Kuma
+status.{$DOMAIN} {
+	import security_headers
+	reverse_proxy uptime-kuma:3001
+}
+
+# Portainer
+portainer.{$DOMAIN} {
+	import security_headers
+	reverse_proxy portainer:9000
+}

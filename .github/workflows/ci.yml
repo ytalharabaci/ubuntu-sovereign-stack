@@ -81,6 +81,7 @@ jobs:
         run: |
           docker compose -f small-scale/docker-compose.yml --env-file small-scale/.env.example config -q
           docker compose -f small-scale/docker-compose.aio.yml --env-file small-scale/.env.example config -q
+          docker compose -f small-scale/vps/docker-compose.yml --env-file small-scale/vps/.env.example config -q
 
   gitleaks:
     runs-on: ubuntu-latest

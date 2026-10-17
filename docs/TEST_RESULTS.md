@@ -20,7 +20,7 @@ machine; GitHub Actions run history is the authoritative record.
 | ansible-lint (production profile) + syntax check | `infrastructure/` | Passing locally 2026-10-17 (ansible-lint 26.10.1, ansible-core 2.21.5) |
 | ShellCheck | `infrastructure/*.sh`, `scripts/*.sh` | Passing locally 2026-10-17 (0.11.0) |
 | Trivy config (HIGH/CRITICAL) | repository (excl. `website/`, `small-scale/mailcow/`, `kubernetes/experimental/`) | Passing locally 2026-10-17 (v0.76.0, with `.trivyignore.yaml`) |
-| `docker compose config` | `small-scale/*.yml` with `.env.example` | Passing locally 2026-10-17 |
+| `docker compose config` | `small-scale/*.yml`, `small-scale/vps/docker-compose.yml` with their `.env.example` | Passing locally 2026-10-17 |
 
 ## Deployment verification
 
@@ -46,6 +46,7 @@ network. Fill in per run.
 | Velero **restore** into clean namespace | v1.18.4 | — | Not yet verified | — | Record duration (RTO) and data age (RPO) |
 | Zimbra | — | — | Not supported | — | `kubernetes/experimental/` |
 | small-scale Compose stack | see compose files | — | Not yet verified | — | |
+| VPS Compose stack (Caddy front end) | see `small-scale/vps/docker-compose.yml` | — | Not yet verified | — | |
 
 ## Known limitations
 

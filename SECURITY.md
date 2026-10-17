@@ -17,7 +17,8 @@ etc.), report it to that project directly.
 
 - No credentials are stored in this repository. Kubernetes Secrets are generated
   in-cluster by `scripts/bootstrap-secrets.sh`; the Compose variant reads them
-  from a git-ignored `small-scale/.env` (template: `.env.example`).
+  from a git-ignored `small-scale/.env` (template: `.env.example`); the VPS
+  variant likewise uses `small-scale/vps/.env`.
 - **Historical note:** commits before the 2026-10 hardening change contained
   hardcoded demo credentials (Authentik, Grafana, Rancher bootstrap, MinIO/Velero,
   Samba, `small-scale/.env`). They were placeholder values that were never used in

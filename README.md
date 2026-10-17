@@ -73,6 +73,7 @@ kubectl apply -f kubernetes/backup/minio.yaml   # then Velero, see kubernetes/ba
   - `backup/`: MinIO, Velero configuration
   - `experimental/`: unsupported components (Zimbra)
 - `small-scale/`: Docker Compose variant for a single host (`.env.example` → `.env`)
+  - `vps/`: public single-VPS stack behind Caddy (WordPress, Poste.io mail, Nextcloud + ONLYOFFICE, Vaultwarden, Uptime Kuma, Portainer); see [small-scale/vps/README.md](small-scale/vps/README.md)
 - `website/`: static landing page
 
 ## Key Documentation
